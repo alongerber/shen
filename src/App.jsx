@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 // ==================== MOCK DATA ====================
 
@@ -687,11 +687,71 @@ const AIAssistant = () => {
   const [isThinking, setIsThinking] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [displayedResponse, setDisplayedResponse] = useState('');
+  const [hasShownWelcome, setHasShownWelcome] = useState(false);
+  const messagesEndRef = useRef(null);
   const [currentSuggestions, setCurrentSuggestions] = useState([
     'מה מצב היום?',
     'יש מטופלים בעייתיים?',
     'מי עוד לא שילם?'
   ]);
+
+  // Calculate urgent items for badge
+  const highPriorityCount = ALERTS.filter(a => a.priority === 'high').length;
+
+  // Auto-scroll to bottom
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, displayedResponse]);
+
+  // Proactive welcome message when opening
+  useEffect(() => {
+    if (isOpen && !hasShownWelcome && messages.length === 0) {
+      setHasShownWelcome(true);
+      setIsThinking(true);
+
+      setTimeout(() => {
+        setIsThinking(false);
+        const welcomeMessage = getProactiveInsight();
+        const assistantMessage = { type: 'assistant', content: welcomeMessage.response };
+        setMessages([assistantMessage]);
+        setCurrentSuggestions(welcomeMessage.suggestions);
+        typeResponse(welcomeMessage.response);
+      }, 600);
+    }
+  }, [isOpen, hasShownWelcome, messages.length]);
+
+  // Generate proactive insight based on current state
+  const getProactiveInsight = () => {
+    const noShows = TODAY_APPOINTMENTS.filter(apt => apt.status === 'no-show');
+    const highPriorityAlerts = ALERTS.filter(a => a.priority === 'high');
+    const patientsWithDebt = Object.values(MOCK_PATIENTS).filter(p => p.balance > 0);
+    const totalDebt = patientsWithDebt.reduce((sum, p) => sum + p.balance, 0);
+    const inTreatment = TODAY_APPOINTMENTS.filter(apt => apt.status === 'in-treatment');
+
+    let response = 'בוקר טוב, דנה. הנה סיכום מהיר:\n\n';
+
+    if (highPriorityAlerts.length > 0) {
+      response += `יש ${highPriorityAlerts.length} התראות דחופות הדורשות תשומת לב.\n`;
+    }
+
+    if (noShows.length > 0) {
+      response += `${MOCK_PATIENTS[noShows[0].patientId].name} לא הגיעה לתור.\n`;
+    }
+
+    if (patientsWithDebt.length > 0) {
+      response += `${patientsWithDebt.length} מטופלים עם חוב פתוח (${totalDebt.toLocaleString()} ש"ח).\n`;
+    }
+
+    if (inTreatment.length > 0) {
+      const patient = MOCK_PATIENTS[inTreatment[0].patientId];
+      response += `\nכרגע בטיפול: ${patient.name}`;
+    }
+
+    return {
+      response: response.trim(),
+      suggestions: ['מה הכי דחוף?', 'פרטים על ההתראות', 'מצב התורים']
+    };
+  };
 
   // AI Logic - Analyzes mock data and generates deterministic responses
   const generateResponse = (question) => {
@@ -701,6 +761,7 @@ const AIAssistant = () => {
     const completedToday = TODAY_APPOINTMENTS.filter(apt => apt.status === 'completed').length;
     const inTreatment = TODAY_APPOINTMENTS.filter(apt => apt.status === 'in-treatment').length;
     const scheduled = TODAY_APPOINTMENTS.filter(apt => apt.status === 'scheduled').length;
+    const arrived = TODAY_APPOINTMENTS.filter(apt => apt.status === 'arrived').length;
     const noShows = TODAY_APPOINTMENTS.filter(apt => apt.status === 'no-show');
     const totalToday = TODAY_APPOINTMENTS.length;
 
@@ -712,22 +773,18 @@ const AIAssistant = () => {
     const highPriorityAlerts = ALERTS.filter(a => a.priority === 'high');
     const medicalAlerts = ALERTS.filter(a => a.type === 'medical');
 
-    // Patients with notes (potential issues)
-    const patientsWithMedicalNotes = Object.values(MOCK_PATIENTS).filter(p =>
-      p.notes && (p.notes.includes('סוכרתי') || p.notes.includes('קומדין') || p.notes.includes('בהריון') || p.notes.includes('חרד'))
-    );
-
     // Pending automation tasks
     const pendingTasks = AUTOMATION_TASKS.filter(t => t.status === 'pending');
 
     // Generate response based on question type
-    if (q.includes('מצב היום') || q.includes('סיכום') || q.includes('מה קורה')) {
-      let response = `${totalToday} תורים מתוכננים להיום. `;
-      response += `${completedToday} הושלמו, `;
-      if (inTreatment > 0) response += `${inTreatment} בטיפול כרגע, `;
-      response += `${scheduled} ממתינים. `;
+    if (q.includes('מצב היום') || q.includes('סיכום') || q.includes('מה קורה') || q.includes('תורים')) {
+      let response = `סה"כ ${totalToday} תורים היום:\n`;
+      response += `- ${completedToday} הושלמו\n`;
+      if (inTreatment > 0) response += `- ${inTreatment} בטיפול כרגע\n`;
+      if (arrived > 0) response += `- ${arrived} ממתינים בקבלה\n`;
+      response += `- ${scheduled} מתוכננים\n`;
       if (noShows.length > 0) {
-        response += `אי-הגעה אחת - ${MOCK_PATIENTS[noShows[0].patientId].name}.`;
+        response += `\nאי-הגעה: ${MOCK_PATIENTS[noShows[0].patientId].name}`;
       }
       return {
         response,
@@ -735,24 +792,24 @@ const AIAssistant = () => {
       };
     }
 
-    if (q.includes('בעייתי') || q.includes('מורכב') || q.includes('קשה')) {
+    if (q.includes('בעייתי') || q.includes('מורכב') || q.includes('קשה') || q.includes('מיוחד')) {
       const problematicPatients = [];
 
-      // Check today's appointments for problematic patients
       TODAY_APPOINTMENTS.forEach(apt => {
         const patient = MOCK_PATIENTS[apt.patientId];
         if (patient.notes && patient.notes.length > 0) {
           problematicPatients.push({
             name: patient.name,
-            reason: patient.notes.split(' - ')[0]
+            reason: patient.notes.split(' - ')[0],
+            time: apt.time
           });
         }
       });
 
       if (problematicPatients.length > 0) {
-        let response = `${problematicPatients.length} מטופלים עם הערות מיוחדות היום:\n`;
-        problematicPatients.slice(0, 3).forEach(p => {
-          response += `- ${p.name}: ${p.reason}\n`;
+        let response = `${problematicPatients.length} מטופלים עם הערות מיוחדות היום:\n\n`;
+        problematicPatients.forEach(p => {
+          response += `${p.time} - ${p.name}\n${p.reason}\n\n`;
         });
         return {
           response: response.trim(),
@@ -766,31 +823,33 @@ const AIAssistant = () => {
       };
     }
 
-    if (q.includes('שילם') || q.includes('חוב') || q.includes('תשלום') || q.includes('כסף')) {
+    if (q.includes('שילם') || q.includes('חוב') || q.includes('תשלום') || q.includes('כסף') || q.includes('יתרה')) {
       if (patientsWithDebt.length > 0) {
-        let response = `${patientsWithDebt.length} מטופלים עם יתרת חוב, סה"כ ${totalDebt.toLocaleString()} ש"ח:\n`;
-        patientsWithDebt.forEach(p => {
-          response += `- ${p.name}: ${p.balance.toLocaleString()} ש"ח\n`;
+        let response = `${patientsWithDebt.length} מטופלים עם יתרת חוב:\n\n`;
+        patientsWithDebt.sort((a, b) => b.balance - a.balance).forEach(p => {
+          response += `${p.name}: ${p.balance.toLocaleString()} ש"ח\n`;
         });
+        response += `\nסה"כ: ${totalDebt.toLocaleString()} ש"ח`;
         return {
           response: response.trim(),
           suggestions: ['שלח תזכורת תשלום', 'מי הכי דחוף?', 'מה מצב היום?']
         };
       }
       return {
-        response: 'אין חובות פתוחים כרגע.',
+        response: 'אין חובות פתוחים כרגע. כל המטופלים שילמו.',
         suggestions: ['מה מצב היום?', 'יש מטופלים בעייתיים?', 'מה בתור האוטומציות?']
       };
     }
 
     if (q.includes('הגעה') || q.includes('סיכון') || q.includes('מחר') || q.includes('ביטול')) {
-      // Find scheduled appointments for "tomorrow"
-      const tomorrowPatients = ['יוסף מזרחי', 'אבי גולן']; // Mock data
-      const atRiskPatient = MOCK_PATIENTS['p4']; // Has debt and is scheduled
+      const atRiskPatient = MOCK_PATIENTS['p4'];
 
-      let response = 'זיהיתי סיכון לאי-הגעה מחר:\n';
-      response += `- ${atRiskPatient.name}: חוב של ${atRiskPatient.balance.toLocaleString()} ש"ח + היסטוריה של דחיות.\n`;
-      response += 'מומלץ להתקשר לאישור אישי.';
+      let response = 'ניתוח סיכוני אי-הגעה למחר:\n\n';
+      response += `סיכון גבוה:\n`;
+      response += `${atRiskPatient.name}\n`;
+      response += `- חוב פתוח: ${atRiskPatient.balance.toLocaleString()} ש"ח\n`;
+      response += `- היסטוריה של דחיות\n\n`;
+      response += `המלצה: התקשרי לאישור אישי.`;
 
       return {
         response,
@@ -798,30 +857,39 @@ const AIAssistant = () => {
       };
     }
 
-    if (q.includes('חשוב') || q.includes('דחוף') || q.includes('מיידי') || q.includes('עכשיו') || q.includes('לטפל')) {
+    if (q.includes('חשוב') || q.includes('דחוף') || q.includes('מיידי') || q.includes('עכשיו') || q.includes('לטפל') || q.includes('עדיפות')) {
       let priorities = [];
 
-      // Check medical alerts first
       if (medicalAlerts.length > 0) {
         const alert = medicalAlerts[0];
         const patient = MOCK_PATIENTS[alert.patientId];
-        priorities.push(`בדיקת INR ל${patient.name} לפני עקירה ב-11:30`);
+        priorities.push({
+          priority: 'קריטי',
+          text: `בדיקת INR ל${patient.name} לפני עקירה ב-11:30`,
+          color: 'rose'
+        });
       }
 
-      // Check no-shows
       if (noShows.length > 0) {
-        priorities.push(`טיפול באי-הגעה של ${MOCK_PATIENTS[noShows[0].patientId].name}`);
+        priorities.push({
+          priority: 'גבוה',
+          text: `טיפול באי-הגעה של ${MOCK_PATIENTS[noShows[0].patientId].name}`,
+          color: 'amber'
+        });
       }
 
-      // Check large debts
       const largeDebts = patientsWithDebt.filter(p => p.balance > 1000);
       if (largeDebts.length > 0) {
-        priorities.push(`חוב של ${largeDebts[0].balance.toLocaleString()} ש"ח - ${largeDebts[0].name}`);
+        priorities.push({
+          priority: 'בינוני',
+          text: `גביית חוב ${largeDebts[0].balance.toLocaleString()} ש"ח מ${largeDebts[0].name}`,
+          color: 'sky'
+        });
       }
 
-      let response = 'עדיפויות לטיפול מיידי:\n';
+      let response = 'עדיפויות לטיפול מיידי:\n\n';
       priorities.forEach((p, i) => {
-        response += `${i + 1}. ${p}\n`;
+        response += `${i + 1}. [${p.priority}] ${p.text}\n`;
       });
 
       return {
@@ -830,10 +898,10 @@ const AIAssistant = () => {
       };
     }
 
-    if (q.includes('אוטומציה') || q.includes('תזכורות') || q.includes('הודעות')) {
-      let response = `${pendingTasks.length} משימות אוטומטיות ממתינות:\n`;
-      pendingTasks.slice(0, 3).forEach(t => {
-        response += `- ${t.patient}: ${t.action}\n`;
+    if (q.includes('אוטומציה') || q.includes('תזכורות') || q.includes('הודעות') || q.includes('משימות')) {
+      let response = `${pendingTasks.length} משימות אוטומטיות ממתינות:\n\n`;
+      pendingTasks.forEach(t => {
+        response += `${t.patient}\n${t.action}\nמתוזמן: ${t.scheduledFor}\n\n`;
       });
 
       return {
@@ -842,14 +910,12 @@ const AIAssistant = () => {
       };
     }
 
-    if (q.includes('התראה') || q.includes('alert')) {
-      let response = `${ALERTS.length} התראות פעילות:\n`;
+    if (q.includes('התראה') || q.includes('alert') || q.includes('פרטים על ההתראות')) {
+      let response = `${ALERTS.length} התראות פעילות:\n\n`;
       ALERTS.forEach(a => {
-        response += `- ${a.message}\n`;
+        const priority = a.priority === 'high' ? '[דחוף]' : '[רגיל]';
+        response += `${priority} ${a.message}\n`;
       });
-      if (highPriorityAlerts.length > 0) {
-        response += `\n${highPriorityAlerts.length} מתוכן בעדיפות גבוהה.`;
-      }
 
       return {
         response: response.trim(),
@@ -865,23 +931,55 @@ const AIAssistant = () => {
         !TODAY_APPOINTMENTS.some(apt => apt.chairId === chair.id && apt.status === 'in-treatment')
       );
 
-      let response = '';
-      if (busyChairs.length > 0) {
-        const busyApt = TODAY_APPOINTMENTS.find(apt => apt.chairId === busyChairs[0].id && apt.status === 'in-treatment');
-        const patient = MOCK_PATIENTS[busyApt.patientId];
-        response = `כיסא 2 תפוס - ${patient.name} בטיפול.\n`;
-      }
-      response += `${freeChairs.length} כיסאות פנויים.`;
+      let response = 'מצב כיסאות:\n\n';
+      CHAIRS.forEach(chair => {
+        const apt = TODAY_APPOINTMENTS.find(a => a.chairId === chair.id && a.status === 'in-treatment');
+        const staff = STAFF[chair.assignedTo];
+        if (apt) {
+          const patient = MOCK_PATIENTS[apt.patientId];
+          response += `${chair.name} - תפוס\n${patient.name} (${apt.treatment})\n${staff.name}\n\n`;
+        } else {
+          response += `${chair.name} - פנוי\n${staff.name}\n\n`;
+        }
+      });
+
+      return {
+        response: response.trim(),
+        suggestions: ['מתי מתפנה כיסא 2?', 'מה התור הבא?', 'מצב היום']
+      };
+    }
+
+    if (q.includes('משה') || q.includes('ביטון')) {
+      const patient = MOCK_PATIENTS['p8'];
+      let response = `${patient.name}\n\n`;
+      response += `טלפון: ${patient.phone}\n`;
+      response += `גיל: ${calculateAge(patient.birthDate)}\n`;
+      response += `חוב: ${patient.balance.toLocaleString()} ש"ח\n\n`;
+      response += `הערות צוות:\n${patient.notes}\n\n`;
+      response += `טיפול הבא: ${patient.nextTreatment}`;
 
       return {
         response,
-        suggestions: ['מתי מתפנה כיסא 2?', 'מה התור הבא?', 'מצב היום']
+        suggestions: ['התקשר למשה', 'בדוק INR', 'חזרה לסיכום']
+      };
+    }
+
+    if (q.includes('שרה') || q.includes('אברהם')) {
+      const patient = MOCK_PATIENTS['p3'];
+      let response = `${patient.name}\n\n`;
+      response += `טלפון: ${patient.phone}\n`;
+      response += `סטטוס: לא הגיעה לתור 10:00\n\n`;
+      response += `פעולה מומלצת:\nשליחת SMS עם קישור לקביעת תור חדש`;
+
+      return {
+        response,
+        suggestions: ['שלח SMS לשרה', 'התקשר לשרה', 'חזרה לסיכום']
       };
     }
 
     // Default response
     return {
-      response: 'אני כאן לעזור בניהול המרפאה. אפשר לשאול על מצב היום, תשלומים, התראות, או כל נושא תפעולי אחר.',
+      response: 'אני כאן לעזור בניהול המרפאה. אפשר לשאול על:\n\n- מצב התורים היום\n- התראות ודחיפויות\n- מצב תשלומים וחובות\n- מטופלים בעייתיים\n- משימות אוטומטיות',
       suggestions: ['מה מצב היום?', 'יש חובות פתוחים?', 'מה הכי דחוף?']
     };
   };
@@ -901,155 +999,148 @@ const AIAssistant = () => {
         setIsTyping(false);
         if (callback) callback();
       }
-    }, 15);
+    }, 12);
   };
 
   const handleSubmit = (question) => {
     if (!question.trim()) return;
 
-    // Add user message
     const userMessage = { type: 'user', content: question };
     setMessages(prev => [...prev, userMessage]);
     setInputValue('');
-
-    // Show thinking state
     setIsThinking(true);
 
-    // Simulate processing delay
     setTimeout(() => {
       setIsThinking(false);
-
       const { response, suggestions } = generateResponse(question);
-
-      // Add assistant message (will be animated)
       const assistantMessage = { type: 'assistant', content: response };
       setMessages(prev => [...prev, assistantMessage]);
       setCurrentSuggestions(suggestions);
-
-      // Start typing animation
       typeResponse(response);
-    }, 800 + Math.random() * 400);
+    }, 500 + Math.random() * 300);
   };
 
   const handleSuggestionClick = (suggestion) => {
     handleSubmit(suggestion);
   };
 
-  // Get the last assistant message for typing animation
-  const lastAssistantMessage = messages.filter(m => m.type === 'assistant').slice(-1)[0];
-
   return (
     <>
       {/* Floating Toggle Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`fixed bottom-6 left-6 z-50 w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-300 shadow-2xl ${
+        className={`fixed bottom-6 left-6 z-50 w-16 h-16 rounded-2xl flex items-center justify-center transition-all duration-500 ${
           isOpen
-            ? 'bg-slate-800 rotate-0 shadow-slate-400/20'
-            : 'bg-gradient-to-br from-indigo-500 to-violet-600 shadow-indigo-500/30 hover:shadow-indigo-500/50 hover:scale-105'
+            ? 'bg-slate-800 shadow-2xl shadow-slate-400/30 scale-90'
+            : 'bg-gradient-to-br from-indigo-500 via-violet-500 to-purple-600 shadow-2xl shadow-violet-500/40 hover:shadow-violet-500/60 hover:scale-110'
         }`}
       >
+        {/* Notification Badge */}
+        {!isOpen && highPriorityCount > 0 && (
+          <span className="absolute -top-1 -right-1 w-6 h-6 bg-rose-500 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg animate-pulse">
+            {highPriorityCount}
+          </span>
+        )}
+
+        {/* Pulse ring animation when closed */}
+        {!isOpen && (
+          <span className="absolute inset-0 rounded-2xl bg-violet-400 animate-ping opacity-20"></span>
+        )}
+
         {isOpen ? (
-          <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
         ) : (
-          <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-8 h-8 text-white relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
           </svg>
         )}
       </button>
 
       {/* Assistant Panel */}
-      <div className={`fixed bottom-24 left-6 z-40 w-96 transition-all duration-500 ease-out ${
+      <div className={`fixed bottom-28 left-6 z-40 w-[420px] transition-all duration-500 ease-out ${
         isOpen
-          ? 'opacity-100 translate-y-0 pointer-events-auto'
-          : 'opacity-0 translate-y-4 pointer-events-none'
+          ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto'
+          : 'opacity-0 translate-y-8 scale-95 pointer-events-none'
       }`}>
-        <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl shadow-slate-300/50 border border-white/60 overflow-hidden">
+        <div className="bg-white/90 backdrop-blur-2xl rounded-3xl shadow-2xl shadow-slate-400/30 border border-white/80 overflow-hidden">
           {/* Header */}
-          <div className="px-6 py-5 bg-gradient-to-br from-slate-800 to-slate-900">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="px-6 py-5 bg-gradient-to-br from-slate-800 via-slate-850 to-slate-900 relative overflow-hidden">
+            {/* Decorative elements */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-indigo-500/20 to-transparent rounded-full blur-2xl"></div>
+            <div className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-tr from-violet-500/20 to-transparent rounded-full blur-2xl"></div>
+
+            <div className="flex items-center gap-4 relative z-10">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 via-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/30">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
                 </svg>
               </div>
               <div>
-                <h3 className="text-white font-bold tracking-tight">עוזר אישי</h3>
-                <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                  מחובר למערכת
+                <h3 className="text-white font-bold text-lg tracking-tight">עוזר אישי</h3>
+                <div className="flex items-center gap-2 text-sm text-slate-300">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span className="text-emerald-400 font-medium">מחובר</span>
+                  </span>
+                  <span className="text-slate-500">|</span>
+                  <span>מנתח {TODAY_APPOINTMENTS.length} תורים</span>
                 </div>
               </div>
             </div>
           </div>
 
           {/* Messages Area */}
-          <div className="h-80 overflow-y-auto p-5 space-y-4 bg-gradient-to-b from-slate-50/50 to-white/50">
-            {messages.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-center px-4">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-100 to-violet-100 flex items-center justify-center mb-4">
-                  <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
-                  </svg>
+          <div className="h-96 overflow-y-auto p-5 space-y-4 bg-gradient-to-b from-slate-50/80 to-white/80">
+            {messages.map((msg, idx) => (
+              <div key={idx} className={`flex ${msg.type === 'user' ? 'justify-start' : 'justify-end'} animate-fadeIn`}>
+                <div className={`max-w-[90%] ${
+                  msg.type === 'user'
+                    ? 'bg-gradient-to-br from-indigo-500 via-violet-500 to-purple-600 text-white rounded-2xl rounded-tr-md px-5 py-3 shadow-lg shadow-violet-200'
+                    : 'bg-white border border-slate-200 text-slate-700 rounded-2xl rounded-tl-md px-5 py-4 shadow-md'
+                }`}>
+                  <p className="text-sm leading-relaxed font-medium whitespace-pre-line">
+                    {msg.type === 'assistant' && idx === messages.length - 1 && isTyping
+                      ? displayedResponse
+                      : msg.content
+                    }
+                    {msg.type === 'assistant' && idx === messages.length - 1 && isTyping && (
+                      <span className="inline-block w-0.5 h-4 bg-violet-500 mr-1 animate-pulse"></span>
+                    )}
+                  </p>
                 </div>
-                <p className="text-slate-600 font-medium text-sm leading-relaxed">
-                  אני כאן לעזור בניהול המרפאה.
-                  <br />
-                  שאלי אותי על מצב היום, תשלומים, או התראות.
-                </p>
               </div>
-            ) : (
-              <>
-                {messages.map((msg, idx) => (
-                  <div key={idx} className={`flex ${msg.type === 'user' ? 'justify-start' : 'justify-end'}`}>
-                    <div className={`max-w-[85%] ${
-                      msg.type === 'user'
-                        ? 'bg-gradient-to-br from-indigo-500 to-violet-600 text-white rounded-2xl rounded-tr-md px-4 py-3'
-                        : 'bg-white border border-slate-200/80 text-slate-700 rounded-2xl rounded-tl-md px-4 py-3 shadow-sm'
-                    }`}>
-                      <p className="text-sm leading-relaxed font-medium whitespace-pre-line">
-                        {msg.type === 'assistant' && idx === messages.length - 1 && isTyping
-                          ? displayedResponse
-                          : msg.content
-                        }
-                        {msg.type === 'assistant' && idx === messages.length - 1 && isTyping && (
-                          <span className="inline-block w-0.5 h-4 bg-slate-400 mr-0.5 animate-pulse"></span>
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+            ))}
 
-                {/* Thinking indicator */}
-                {isThinking && (
-                  <div className="flex justify-end">
-                    <div className="bg-white border border-slate-200/80 rounded-2xl rounded-tl-md px-4 py-3 shadow-sm">
-                      <div className="flex items-center gap-2">
-                        <div className="flex gap-1">
-                          <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                          <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                          <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
-                        </div>
-                        <span className="text-xs text-slate-400 font-medium">מנתח נתונים</span>
-                      </div>
+            {/* Thinking indicator */}
+            {isThinking && (
+              <div className="flex justify-end animate-fadeIn">
+                <div className="bg-white border border-slate-200 rounded-2xl rounded-tl-md px-5 py-4 shadow-md">
+                  <div className="flex items-center gap-3">
+                    <div className="flex gap-1.5">
+                      <span className="w-2.5 h-2.5 bg-violet-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                      <span className="w-2.5 h-2.5 bg-violet-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                      <span className="w-2.5 h-2.5 bg-violet-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
                     </div>
+                    <span className="text-sm text-slate-500 font-medium">מנתח נתונים...</span>
                   </div>
-                )}
-              </>
+                </div>
+              </div>
             )}
+
+            <div ref={messagesEndRef} />
           </div>
 
           {/* Suggestions */}
           {!isThinking && !isTyping && (
-            <div className="px-4 pb-3 pt-2 border-t border-slate-100/80 bg-white/60">
+            <div className="px-5 pb-4 pt-3 border-t border-slate-100 bg-white/90">
               <div className="flex flex-wrap gap-2">
                 {currentSuggestions.map((suggestion, idx) => (
                   <button
                     key={idx}
                     onClick={() => handleSuggestionClick(suggestion)}
-                    className="px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                    className="px-4 py-2 text-xs font-semibold text-violet-700 bg-violet-50 hover:bg-violet-100 rounded-xl transition-all duration-200 hover:scale-105 border border-violet-100"
                   >
                     {suggestion}
                   </button>
@@ -1059,7 +1150,7 @@ const AIAssistant = () => {
           )}
 
           {/* Input Area */}
-          <div className="p-4 border-t border-slate-100/80 bg-white/80">
+          <div className="p-5 border-t border-slate-100 bg-white">
             <div className="flex gap-3">
               <input
                 type="text"
@@ -1067,13 +1158,13 @@ const AIAssistant = () => {
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSubmit(inputValue)}
                 placeholder="שאל שאלה..."
-                className="flex-1 px-4 py-3 bg-slate-100/80 rounded-xl text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:bg-white transition-all font-medium"
+                className="flex-1 px-5 py-3.5 bg-slate-100 rounded-2xl text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-300 focus:bg-white transition-all font-medium"
                 disabled={isThinking || isTyping}
               />
               <button
                 onClick={() => handleSubmit(inputValue)}
                 disabled={!inputValue.trim() || isThinking || isTyping}
-                className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white flex items-center justify-center shadow-lg shadow-indigo-200 hover:shadow-xl hover:shadow-indigo-300 disabled:opacity-50 disabled:shadow-none transition-all"
+                className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 via-violet-500 to-purple-600 text-white flex items-center justify-center shadow-lg shadow-violet-300 hover:shadow-xl hover:shadow-violet-400 disabled:opacity-50 disabled:shadow-none transition-all duration-300 hover:scale-105"
               >
                 <svg className="w-5 h-5 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
@@ -1083,6 +1174,17 @@ const AIAssistant = () => {
           </div>
         </div>
       </div>
+
+      {/* Custom animation styles */}
+      <style>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fadeIn {
+          animation: fadeIn 0.3s ease-out;
+        }
+      `}</style>
     </>
   );
 };
