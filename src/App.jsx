@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 // ==================== MOCK DATA ====================
 
@@ -67,6 +67,46 @@ const AUTOMATION_TASKS = [
   { id: 't5', type: 'reminder', status: 'sent', patient: 'נועה פרידמן', action: 'SMS תזכורת + הוראות פלואוריד', scheduledFor: 'בוצע אתמול' },
   { id: 't6', type: 'recall', status: 'pending', patient: 'אבי גולן', action: 'תזכורת בדיקה תקופתית', scheduledFor: 'מחר 09:00' },
 ];
+
+// ==================== ENHANCED ANALYTICS DATA ====================
+
+const DAILY_REVENUE = {
+  today: 4250,
+  target: 8000,
+  collected: 3100,
+  pending: 1150,
+  treatments: [
+    { name: 'טיפול שורש', amount: 1500, time: '08:30' },
+    { name: 'ניקוי אבנית', amount: 350, time: '09:00' },
+    { name: 'סתימה קומפוזיט', amount: 450, time: '09:30' },
+  ]
+};
+
+const MONTHLY_STATS = {
+  revenue: 127500,
+  patients: 156,
+  newPatients: 23,
+  noShowRate: 4.2,
+  collectionRate: 94.5,
+  avgTreatmentValue: 820,
+};
+
+const LIVE_ACTIVITY = [
+  { id: 1, type: 'payment', text: 'תשלום התקבל - רחל כהן', amount: 1500, time: '09:45', icon: '💳' },
+  { id: 2, type: 'sms', text: 'SMS נשלח - נועה פרידמן', time: '09:30', icon: '📱' },
+  { id: 3, type: 'checkin', text: 'צ׳ק-אין - נועה פרידמן', time: '09:55', icon: '✓' },
+  { id: 4, type: 'treatment', text: 'טיפול הושלם - רחל כהן', time: '09:30', icon: '🦷' },
+  { id: 5, type: 'noshow', text: 'אי-הגעה - שרה אברהם', time: '10:15', icon: '⚠️' },
+];
+
+const AUTOMATION_STATS = {
+  totalSent: 1247,
+  thisMonth: 89,
+  successRate: 96.8,
+  responseRate: 34.2,
+  savedHours: 47,
+  reducedNoShows: 62,
+};
 
 // ==================== UTILITY FUNCTIONS ====================
 
@@ -178,41 +218,82 @@ const StatCard = ({ label, value, trend, color = 'slate', icon }) => {
 // ==================== SCREENS ====================
 
 const DashboardScreen = ({ onNavigate, onSelectPatient }) => {
-  const now = new Date();
-  const currentHour = now.getHours();
-  const currentMinute = now.getMinutes();
-  const currentTimeStr = `${currentHour.toString().padStart(2, '0')}:${currentMinute.toString().padStart(2, '0')}`;
-  
+  const [liveTime, setLiveTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setLiveTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const currentTimeStr = `${liveTime.getHours().toString().padStart(2, '0')}:${liveTime.getMinutes().toString().padStart(2, '0')}:${liveTime.getSeconds().toString().padStart(2, '0')}`;
+
   const upcomingAppointments = TODAY_APPOINTMENTS
     .filter(apt => apt.status === 'scheduled' || apt.status === 'arrived')
-    .slice(0, 5);
-  
+    .slice(0, 4);
+
   const completedToday = TODAY_APPOINTMENTS.filter(apt => apt.status === 'completed').length;
   const inTreatment = TODAY_APPOINTMENTS.filter(apt => apt.status === 'in-treatment').length;
   const noShows = TODAY_APPOINTMENTS.filter(apt => apt.status === 'no-show').length;
   const totalToday = TODAY_APPOINTMENTS.length;
+  const revenuePercent = Math.round((DAILY_REVENUE.today / DAILY_REVENUE.target) * 100);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-end justify-between">
         <div>
           <h1 className="text-3xl font-bold text-slate-800 tracking-tight">לוח בקרה</h1>
-          <p className="text-slate-400 mt-2 font-medium">יום ראשון, 12 בינואר 2025 • {currentTimeStr}</p>
+          <div className="flex items-center gap-3 mt-2">
+            <p className="text-slate-400 font-medium">יום ראשון, 12 בינואר 2025</p>
+            <span className="px-3 py-1 bg-emerald-100 text-emerald-700 text-sm font-bold rounded-lg flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              {currentTimeStr}
+            </span>
+          </div>
         </div>
         <div className="flex items-center gap-3">
-          <button className="px-5 py-2.5 bg-gradient-to-br from-indigo-500 to-indigo-600 text-white text-sm font-semibold rounded-xl shadow-lg shadow-indigo-200 hover:shadow-xl hover:shadow-indigo-300 transition-all duration-300">
+          <button className="px-4 py-2.5 bg-white border border-slate-200 text-slate-600 text-sm font-semibold rounded-xl hover:bg-slate-50 transition-all">
+            📊 דוחות
+          </button>
+          <button className="px-5 py-2.5 bg-gradient-to-br from-indigo-500 to-violet-600 text-white text-sm font-semibold rounded-xl shadow-lg shadow-indigo-200 hover:shadow-xl hover:shadow-indigo-300 transition-all duration-300">
             + תור חדש
           </button>
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-4 gap-5">
-        <StatCard label="תורים היום" value={totalToday} icon="📅" color="slate" trend="בהשוואה ל-6 אתמול" />
+      {/* Revenue + Stats Row */}
+      <div className="grid grid-cols-5 gap-4">
+        {/* Revenue Card - Larger */}
+        <Card className="col-span-2 p-5 relative overflow-hidden" hover={false}>
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <span className="text-sm font-medium text-slate-500">הכנסות היום</span>
+              <div className="text-3xl font-bold text-slate-800 mt-1">₪{DAILY_REVENUE.today.toLocaleString()}</div>
+              <div className="text-sm text-slate-400 mt-1">מתוך יעד ₪{DAILY_REVENUE.target.toLocaleString()}</div>
+            </div>
+            <div className="text-right">
+              <span className={`text-2xl font-bold ${revenuePercent >= 50 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                {revenuePercent}%
+              </span>
+            </div>
+          </div>
+          {/* Progress bar */}
+          <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full transition-all duration-1000"
+              style={{ width: `${revenuePercent}%` }}
+            ></div>
+          </div>
+          <div className="flex justify-between mt-3 text-xs font-medium">
+            <span className="text-emerald-600">נגבה: ₪{DAILY_REVENUE.collected.toLocaleString()}</span>
+            <span className="text-amber-600">ממתין: ₪{DAILY_REVENUE.pending.toLocaleString()}</span>
+          </div>
+          <div className="absolute -left-8 -bottom-8 w-32 h-32 rounded-full bg-gradient-to-br from-indigo-500/10 to-violet-500/10"></div>
+        </Card>
+
+        <StatCard label="תורים היום" value={totalToday} icon="📅" color="slate" trend="+2 מאתמול" />
         <StatCard label="הושלמו" value={completedToday} icon="✓" color="emerald" />
-        <StatCard label="בטיפול כרגע" value={inTreatment} icon="⏱" color="amber" />
-        <StatCard label="לא הגיעו" value={noShows} icon="✗" color="rose" />
+        <StatCard label="בטיפול" value={inTreatment} icon="⏱" color="amber" />
       </div>
 
       <div className="grid grid-cols-3 gap-6">
@@ -263,38 +344,73 @@ const DashboardScreen = ({ onNavigate, onSelectPatient }) => {
           </div>
         </Card>
 
-        {/* Alerts */}
-        <Card hover={false}>
-          <div className="p-5 border-b border-slate-100">
-            <div className="flex items-center gap-2">
-              <span className="flex h-2.5 w-2.5 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
-              </span>
-              <h2 className="font-bold text-slate-800 text-lg tracking-tight">התראות</h2>
-            </div>
-            <p className="text-sm text-slate-400 mt-0.5">{ALERTS.length} פריטים דורשים טיפול</p>
-          </div>
-          <div className="p-4 space-y-3">
-            {ALERTS.map(alert => {
-              const config = getAlertConfig(alert.type);
-              return (
-                <div 
-                  key={alert.id}
-                  className={`p-4 rounded-xl border bg-gradient-to-br ${config.bg} ${config.border} cursor-pointer hover:scale-[1.02] transition-all duration-200 shadow-sm`}
-                  onClick={() => onSelectPatient(alert.patientId)}
-                >
-                  <div className="flex items-start gap-3">
-                    <span className={`w-8 h-8 rounded-lg ${config.iconBg} flex items-center justify-center text-sm`}>
-                      {config.icon}
-                    </span>
-                    <p className="text-sm text-slate-700 leading-relaxed font-medium flex-1">{alert.message}</p>
-                  </div>
+        {/* Alerts + Live Activity */}
+        <div className="space-y-5">
+          {/* Live Activity Feed */}
+          <Card hover={false}>
+            <div className="p-4 border-b border-slate-100">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-2 w-2 relative">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  <h2 className="font-bold text-slate-800 tracking-tight">פעילות חיה</h2>
                 </div>
-              );
-            })}
-          </div>
-        </Card>
+                <span className="text-xs text-slate-400 font-medium">עכשיו</span>
+              </div>
+            </div>
+            <div className="p-3 space-y-2 max-h-40 overflow-y-auto">
+              {LIVE_ACTIVITY.map((activity, idx) => (
+                <div key={activity.id} className={`flex items-center gap-3 p-2 rounded-lg ${idx === 0 ? 'bg-emerald-50 border border-emerald-100' : 'hover:bg-slate-50'} transition-all`}>
+                  <span className="text-lg">{activity.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-slate-700 font-medium truncate">{activity.text}</p>
+                  </div>
+                  <span className="text-xs text-slate-400">{activity.time}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {/* Alerts */}
+          <Card hover={false}>
+            <div className="p-4 border-b border-slate-100">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-2.5 w-2.5 relative">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
+                  </span>
+                  <h2 className="font-bold text-slate-800 tracking-tight">התראות</h2>
+                </div>
+                <span className="px-2 py-0.5 bg-rose-100 text-rose-700 text-xs font-bold rounded-full">{ALERTS.filter(a => a.priority === 'high').length} דחוף</span>
+              </div>
+            </div>
+            <div className="p-3 space-y-2">
+              {ALERTS.slice(0, 3).map(alert => {
+                const config = getAlertConfig(alert.type);
+                return (
+                  <div
+                    key={alert.id}
+                    className={`p-3 rounded-xl border bg-gradient-to-br ${config.bg} ${config.border} cursor-pointer hover:scale-[1.01] transition-all duration-200 shadow-sm`}
+                    onClick={() => onSelectPatient(alert.patientId)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className={`w-7 h-7 rounded-lg ${config.iconBg} flex items-center justify-center text-sm`}>
+                        {config.icon}
+                      </span>
+                      <p className="text-xs text-slate-700 leading-relaxed font-medium flex-1">{alert.message}</p>
+                      {alert.priority === 'high' && (
+                        <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        </div>
       </div>
 
       {/* Chair Status */}
@@ -464,13 +580,34 @@ const PatientCardScreen = ({ patientId, onBack }) => {
   const patient = MOCK_PATIENTS[patientId];
   const history = MOCK_TREATMENTS_HISTORY[patientId] || [];
   const age = calculateAge(patient.birthDate);
-  
+
+  // Calculate patient stats
+  const totalSpent = history.reduce((sum, t) => sum + t.cost, 0);
+  const totalPaid = history.filter(t => t.paid).reduce((sum, t) => sum + t.cost, 0);
+  const treatmentCount = history.length;
+
+  // Mock communication history
+  const communicationLog = [
+    { type: 'sms', date: '12/01/2025', time: '09:00', content: 'תזכורת תור', status: 'delivered' },
+    { type: 'whatsapp', date: '05/01/2025', time: '18:30', content: 'מעקב אחרי טיפול', status: 'read' },
+    { type: 'call', date: '20/12/2024', time: '14:15', content: 'אישור תור', status: 'answered' },
+  ];
+
+  // Risk assessment (mock AI analysis)
+  const riskScore = patient.balance > 1000 ? 'high' : patient.balance > 0 ? 'medium' : 'low';
+  const riskConfig = {
+    high: { color: 'rose', label: 'גבוה', percent: 75, factors: ['חוב מעל 1,000 ש"ח', 'היסטוריית דחיות'] },
+    medium: { color: 'amber', label: 'בינוני', percent: 45, factors: ['חוב פתוח', 'צריך מעקב'] },
+    low: { color: 'emerald', label: 'נמוך', percent: 15, factors: ['משלם בזמן', 'מגיע לתורים'] },
+  };
+  const risk = riskConfig[riskScore];
+
   const mockSmsPreview = `שלום ${patient.name.split(' ')[0]}, תזכורת לתור במרפאת השיניים מחר. נשמח לראותך! לביטול: 03-1234567`;
   const mockWhatsappPreview = `היי ${patient.name.split(' ')[0]}! 😊\nרצינו לבדוק איך את/ה מרגיש/ה אחרי הטיפול?\nאם יש שאלות - אנחנו כאן!`;
 
   return (
-    <div className="space-y-8">
-      <button 
+    <div className="space-y-6">
+      <button
         onClick={onBack}
         className="flex items-center gap-2 text-slate-500 hover:text-slate-800 transition-colors font-medium group"
       >
@@ -480,31 +617,72 @@ const PatientCardScreen = ({ patientId, onBack }) => {
         חזרה ללוח הבקרה
       </button>
 
-      {/* Patient Header */}
+      {/* Patient Header - Enhanced */}
       <Card className="overflow-hidden" hover={false}>
-        <div className="h-24 bg-gradient-to-br from-indigo-500 via-indigo-600 to-violet-600"></div>
-        <div className="p-6 -mt-12">
+        <div className="h-28 bg-gradient-to-br from-indigo-500 via-indigo-600 to-violet-600 relative">
+          <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSI+PGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iMiIvPjwvZz48L2c+PC9zdmc+')] opacity-50"></div>
+        </div>
+        <div className="p-6 -mt-14">
           <div className="flex items-end justify-between">
             <div className="flex items-end gap-5">
-              <div className="w-24 h-24 rounded-2xl bg-white shadow-xl shadow-indigo-200 flex items-center justify-center border-4 border-white">
-                <span className="text-4xl font-bold bg-gradient-to-br from-indigo-500 to-violet-600 bg-clip-text text-transparent">
+              <div className="w-28 h-28 rounded-2xl bg-white shadow-xl shadow-indigo-200 flex items-center justify-center border-4 border-white relative">
+                <span className="text-5xl font-bold bg-gradient-to-br from-indigo-500 to-violet-600 bg-clip-text text-transparent">
                   {patient.name.charAt(0)}
                 </span>
+                {/* Status indicator */}
+                <span className={`absolute -bottom-1 -left-1 w-6 h-6 rounded-full border-4 border-white ${riskScore === 'low' ? 'bg-emerald-500' : riskScore === 'medium' ? 'bg-amber-500' : 'bg-rose-500'}`}></span>
               </div>
-              <div className="mb-1">
-                <h1 className="text-2xl font-bold text-slate-800">{patient.name}</h1>
-                <p className="text-slate-500 mt-1 font-medium">גיל {age} • {patient.phone}</p>
+              <div className="mb-2">
+                <div className="flex items-center gap-3">
+                  <h1 className="text-2xl font-bold text-slate-800">{patient.name}</h1>
+                  <span className={`px-2 py-0.5 text-xs font-bold rounded-full bg-${risk.color}-100 text-${risk.color}-700`}>
+                    מטופל {treatmentCount > 2 ? 'קבוע' : 'חדש'}
+                  </span>
+                </div>
+                <p className="text-slate-500 mt-1 font-medium">גיל {age} • {patient.phone} • {patient.email}</p>
               </div>
             </div>
-            {patient.balance > 0 && (
-              <div className="px-5 py-3 bg-gradient-to-br from-rose-50 to-rose-100/50 border border-rose-200 rounded-xl shadow-sm">
-                <div className="text-xs text-rose-600 font-semibold">יתרת חוב</div>
-                <div className="text-2xl font-bold text-rose-700">₪{patient.balance.toLocaleString()}</div>
-              </div>
-            )}
+            <div className="flex items-center gap-3">
+              {/* Quick Actions */}
+              <button className="px-4 py-2.5 bg-emerald-50 text-emerald-700 text-sm font-bold rounded-xl hover:bg-emerald-100 transition-all flex items-center gap-2">
+                <span>📱</span> SMS
+              </button>
+              <button className="px-4 py-2.5 bg-green-50 text-green-700 text-sm font-bold rounded-xl hover:bg-green-100 transition-all flex items-center gap-2">
+                <span>💬</span> WhatsApp
+              </button>
+              <button className="px-4 py-2.5 bg-indigo-500 text-white text-sm font-bold rounded-xl hover:bg-indigo-600 transition-all shadow-lg shadow-indigo-200 flex items-center gap-2">
+                <span>📅</span> קבע תור
+              </button>
+            </div>
           </div>
         </div>
       </Card>
+
+      {/* Stats Row */}
+      <div className="grid grid-cols-5 gap-4">
+        <Card className="p-4 text-center" hover={false}>
+          <div className="text-2xl font-bold text-indigo-600">{treatmentCount}</div>
+          <div className="text-xs text-slate-500 mt-1">טיפולים</div>
+        </Card>
+        <Card className="p-4 text-center" hover={false}>
+          <div className="text-2xl font-bold text-emerald-600">₪{totalSpent.toLocaleString()}</div>
+          <div className="text-xs text-slate-500 mt-1">סה״כ טיפולים</div>
+        </Card>
+        <Card className="p-4 text-center" hover={false}>
+          <div className="text-2xl font-bold text-sky-600">₪{totalPaid.toLocaleString()}</div>
+          <div className="text-xs text-slate-500 mt-1">שולם</div>
+        </Card>
+        <Card className="p-4 text-center" hover={false}>
+          <div className={`text-2xl font-bold ${patient.balance > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+            ₪{patient.balance.toLocaleString()}
+          </div>
+          <div className="text-xs text-slate-500 mt-1">יתרה</div>
+        </Card>
+        <Card className={`p-4 text-center bg-gradient-to-br from-${risk.color}-50 to-${risk.color}-100/50`} hover={false}>
+          <div className={`text-2xl font-bold text-${risk.color}-600`}>{risk.label}</div>
+          <div className="text-xs text-slate-500 mt-1">סיכון נטישה</div>
+        </Card>
+      </div>
 
       <div className="grid grid-cols-3 gap-6">
         {/* Details & Notes */}
@@ -529,7 +707,7 @@ const PatientCardScreen = ({ patientId, onBack }) => {
                 </div>
               ))}
             </div>
-            
+
             {patient.notes && (
               <div className="mt-6 p-4 bg-gradient-to-br from-amber-50 to-orange-50/50 border border-amber-200/60 rounded-xl">
                 <div className="flex items-center gap-2 text-amber-700 font-semibold text-sm mb-2">
@@ -539,6 +717,87 @@ const PatientCardScreen = ({ patientId, onBack }) => {
                 <p className="text-sm text-amber-800 leading-relaxed">{patient.notes}</p>
               </div>
             )}
+          </div>
+        </Card>
+
+        {/* Risk Assessment - AI Analysis */}
+        <Card hover={false}>
+          <div className="p-5 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
+                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+              </span>
+              <h2 className="font-bold text-slate-800 tracking-tight">ניתוח AI</h2>
+            </div>
+          </div>
+          <div className="p-5 space-y-4">
+            {/* Risk Score Gauge */}
+            <div className="text-center">
+              <div className={`inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-${risk.color}-100 to-${risk.color}-200 mb-2`}>
+                <span className={`text-2xl font-bold text-${risk.color}-700`}>{risk.percent}%</span>
+              </div>
+              <div className={`text-sm font-bold text-${risk.color}-700`}>סיכון {risk.label}</div>
+            </div>
+
+            {/* Risk Factors */}
+            <div className="space-y-2">
+              <div className="text-xs text-slate-500 font-semibold">גורמים:</div>
+              {risk.factors.map((factor, idx) => (
+                <div key={idx} className={`flex items-center gap-2 text-sm text-${risk.color}-700 bg-${risk.color}-50 px-3 py-2 rounded-lg`}>
+                  <span className={`w-1.5 h-1.5 rounded-full bg-${risk.color}-500`}></span>
+                  {factor}
+                </div>
+              ))}
+            </div>
+
+            {/* AI Recommendation */}
+            <div className="p-3 bg-gradient-to-br from-indigo-50 to-violet-50 rounded-xl border border-indigo-100">
+              <div className="text-xs text-indigo-600 font-bold mb-1">המלצת AI:</div>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                {riskScore === 'high'
+                  ? 'מומלץ ליצור קשר טלפוני אישי לפני התור הבא ולהציע תוכנית תשלומים.'
+                  : riskScore === 'medium'
+                  ? 'שלח תזכורת WhatsApp אישית יום לפני התור.'
+                  : 'מטופל יציב. המשך שליחת תזכורות אוטומטיות.'}
+              </p>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* Communication Log + Message Preview */}
+      <div className="grid grid-cols-2 gap-6">
+        {/* Communication History */}
+        <Card hover={false}>
+          <div className="p-5 border-b border-slate-100">
+            <div className="flex items-center justify-between">
+              <h2 className="font-bold text-slate-800 text-lg tracking-tight">היסטוריית תקשורת</h2>
+              <span className="text-xs text-slate-400 font-medium">{communicationLog.length} הודעות</span>
+            </div>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {communicationLog.map((comm, idx) => (
+              <div key={idx} className="p-4 flex items-center gap-4 hover:bg-slate-50 transition-colors">
+                <span className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg ${
+                  comm.type === 'sms' ? 'bg-slate-100' :
+                  comm.type === 'whatsapp' ? 'bg-green-100' : 'bg-sky-100'
+                }`}>
+                  {comm.type === 'sms' ? '📱' : comm.type === 'whatsapp' ? '💬' : '📞'}
+                </span>
+                <div className="flex-1">
+                  <div className="text-sm font-semibold text-slate-800">{comm.content}</div>
+                  <div className="text-xs text-slate-400 mt-0.5">{comm.date} • {comm.time}</div>
+                </div>
+                <span className={`text-xs font-bold px-2 py-1 rounded-full ${
+                  comm.status === 'delivered' ? 'bg-emerald-100 text-emerald-700' :
+                  comm.status === 'read' ? 'bg-sky-100 text-sky-700' : 'bg-violet-100 text-violet-700'
+                }`}>
+                  {comm.status === 'delivered' ? 'נמסר' : comm.status === 'read' ? 'נקרא' : 'נענה'}
+                </span>
+              </div>
+            ))}
           </div>
         </Card>
 
@@ -572,9 +831,15 @@ const PatientCardScreen = ({ patientId, onBack }) => {
 
       {/* Treatment History */}
       <Card hover={false}>
-        <div className="p-5 border-b border-slate-100">
-          <h2 className="font-bold text-slate-800 text-lg tracking-tight">היסטוריית טיפולים</h2>
-          <p className="text-sm text-slate-400 mt-0.5">{history.length} טיפולים במערכת</p>
+        <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+          <div>
+            <h2 className="font-bold text-slate-800 text-lg tracking-tight">היסטוריית טיפולים</h2>
+            <p className="text-sm text-slate-400 mt-0.5">{history.length} טיפולים במערכת</p>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-slate-500">סה״כ:</span>
+            <span className="font-bold text-slate-800">₪{totalSpent.toLocaleString()}</span>
+          </div>
         </div>
         {history.length > 0 ? (
           <div className="divide-y divide-slate-100">
@@ -607,18 +872,54 @@ const PatientCardScreen = ({ patientId, onBack }) => {
 
 const AutomationScreen = () => {
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-slate-800 tracking-tight">משימות ואוטומציה</h1>
-        <p className="text-slate-400 mt-2 font-medium">ניהול תזכורות, מעקבים והודעות אוטומטיות</p>
+    <div className="space-y-6">
+      <div className="flex items-end justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-800 tracking-tight">אוטומציה חכמה</h1>
+          <p className="text-slate-400 mt-2 font-medium">מערכת AI לניהול תקשורת אוטומטית עם מטופלים</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="px-3 py-1.5 bg-emerald-100 text-emerald-700 text-sm font-bold rounded-lg flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            מערכת פעילה
+          </span>
+        </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-4 gap-5">
-        <StatCard label="ממתינות" value={AUTOMATION_TASKS.filter(t => t.status === 'pending').length} icon="⏳" color="amber" />
-        <StatCard label="הופעלו" value={AUTOMATION_TASKS.filter(t => t.status === 'triggered').length} icon="⚡" color="sky" />
-        <StatCard label="נשלחו" value={AUTOMATION_TASKS.filter(t => t.status === 'sent').length} icon="✓" color="emerald" />
-        <StatCard label="סה״כ פעילות" value={AUTOMATION_TASKS.length} icon="📊" color="slate" />
+      {/* Impact Stats */}
+      <div className="grid grid-cols-6 gap-4">
+        <Card className="p-4 text-center" hover={false}>
+          <div className="text-2xl font-bold text-indigo-600">{AUTOMATION_STATS.totalSent.toLocaleString()}</div>
+          <div className="text-xs text-slate-500 mt-1">הודעות נשלחו</div>
+        </Card>
+        <Card className="p-4 text-center" hover={false}>
+          <div className="text-2xl font-bold text-emerald-600">{AUTOMATION_STATS.successRate}%</div>
+          <div className="text-xs text-slate-500 mt-1">אחוז הצלחה</div>
+        </Card>
+        <Card className="p-4 text-center" hover={false}>
+          <div className="text-2xl font-bold text-violet-600">{AUTOMATION_STATS.responseRate}%</div>
+          <div className="text-xs text-slate-500 mt-1">אחוז תגובה</div>
+        </Card>
+        <Card className="p-4 text-center" hover={false}>
+          <div className="text-2xl font-bold text-amber-600">{AUTOMATION_STATS.savedHours}</div>
+          <div className="text-xs text-slate-500 mt-1">שעות נחסכו</div>
+        </Card>
+        <Card className="p-4 text-center" hover={false}>
+          <div className="text-2xl font-bold text-rose-600">-{AUTOMATION_STATS.reducedNoShows}%</div>
+          <div className="text-xs text-slate-500 mt-1">הפחתת אי-הגעות</div>
+        </Card>
+        <Card className="p-4 text-center bg-gradient-to-br from-indigo-500 to-violet-600" hover={false}>
+          <div className="text-2xl font-bold text-white">{AUTOMATION_STATS.thisMonth}</div>
+          <div className="text-xs text-indigo-100 mt-1">החודש</div>
+        </Card>
+      </div>
+
+      {/* Task Queue Stats */}
+      <div className="grid grid-cols-4 gap-4">
+        <StatCard label="ממתינות לשליחה" value={AUTOMATION_TASKS.filter(t => t.status === 'pending').length} icon="⏳" color="amber" />
+        <StatCard label="בביצוע" value={AUTOMATION_TASKS.filter(t => t.status === 'triggered').length} icon="⚡" color="sky" />
+        <StatCard label="הושלמו היום" value={AUTOMATION_TASKS.filter(t => t.status === 'sent').length} icon="✓" color="emerald" />
+        <StatCard label="בתור להיום" value={AUTOMATION_TASKS.length} icon="📋" color="slate" />
       </div>
 
       {/* Automation Rules */}
@@ -678,6 +979,243 @@ const AutomationScreen = () => {
   );
 };
 
+// ==================== BILLING SCREEN ====================
+
+const BILLING_DATA = {
+  monthlyRevenue: [
+    { month: 'ינואר', revenue: 127500, target: 140000 },
+    { month: 'דצמבר', revenue: 142300, target: 140000 },
+    { month: 'נובמבר', revenue: 118900, target: 130000 },
+  ],
+  paymentMethods: [
+    { method: 'אשראי', amount: 89500, percent: 70, icon: '💳' },
+    { method: 'מזומן', amount: 25500, percent: 20, icon: '💵' },
+    { method: 'העברה', amount: 12500, percent: 10, icon: '🏦' },
+  ],
+  recentPayments: [
+    { id: 1, patient: 'רחל כהן', amount: 1500, method: 'אשראי', time: '09:45', treatment: 'טיפול שורש' },
+    { id: 2, patient: 'אבי גולן', amount: 350, method: 'מזומן', time: '09:15', treatment: 'ניקוי אבנית' },
+    { id: 3, patient: 'נועה פרידמן', amount: 200, method: 'אשראי', time: 'אתמול', treatment: 'בדיקה + פלואוריד' },
+  ],
+  pendingPayments: [
+    { id: 1, patient: 'יוסף מזרחי', amount: 1200, daysOverdue: 45, treatment: 'כתר + טיפול שורש' },
+    { id: 2, patient: 'משה ביטון', amount: 800, daysOverdue: 14, treatment: 'הכנת שן לכתר' },
+    { id: 3, patient: 'דוד לוי', amount: 350, daysOverdue: 7, treatment: 'סתימה קומפוזיט' },
+  ],
+};
+
+const BillingScreen = ({ onSelectPatient }) => {
+  const patientsWithDebt = Object.values(MOCK_PATIENTS).filter(p => p.balance > 0);
+  const totalDebt = patientsWithDebt.reduce((sum, p) => sum + p.balance, 0);
+  const collectionRate = 94.5;
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-end justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-800 tracking-tight">גבייה וכספים</h1>
+          <p className="text-slate-400 mt-2 font-medium">ניהול תשלומים ומעקב הכנסות</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button className="px-4 py-2.5 bg-white border border-slate-200 text-slate-600 text-sm font-semibold rounded-xl hover:bg-slate-50 transition-all">
+            📊 דוח חודשי
+          </button>
+          <button className="px-5 py-2.5 bg-gradient-to-br from-emerald-500 to-teal-600 text-white text-sm font-semibold rounded-xl shadow-lg shadow-emerald-200 hover:shadow-xl transition-all">
+            💳 תשלום חדש
+          </button>
+        </div>
+      </div>
+
+      {/* Key Metrics */}
+      <div className="grid grid-cols-4 gap-4">
+        <Card className="p-5 relative overflow-hidden" hover={false}>
+          <div className="relative z-10">
+            <span className="text-sm font-medium text-slate-500">הכנסות החודש</span>
+            <div className="text-3xl font-bold text-slate-800 mt-1">₪{MONTHLY_STATS.revenue.toLocaleString()}</div>
+            <div className="flex items-center gap-1 mt-2">
+              <span className="text-emerald-600 text-sm font-bold">+12%</span>
+              <span className="text-slate-400 text-xs">מהחודש שעבר</span>
+            </div>
+          </div>
+          <div className="absolute -left-4 -bottom-4 w-20 h-20 rounded-full bg-gradient-to-br from-emerald-500/10 to-teal-500/10"></div>
+        </Card>
+
+        <Card className="p-5" hover={false}>
+          <span className="text-sm font-medium text-slate-500">אחוז גבייה</span>
+          <div className="text-3xl font-bold text-emerald-600 mt-1">{collectionRate}%</div>
+          <div className="h-2 bg-slate-100 rounded-full mt-3 overflow-hidden">
+            <div className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full" style={{ width: `${collectionRate}%` }}></div>
+          </div>
+        </Card>
+
+        <Card className="p-5" hover={false}>
+          <span className="text-sm font-medium text-slate-500">חובות פתוחים</span>
+          <div className="text-3xl font-bold text-rose-600 mt-1">₪{totalDebt.toLocaleString()}</div>
+          <div className="text-xs text-slate-400 mt-2">{patientsWithDebt.length} מטופלים</div>
+        </Card>
+
+        <Card className="p-5 bg-gradient-to-br from-indigo-500 to-violet-600" hover={false}>
+          <span className="text-sm font-medium text-indigo-100">הכנסות היום</span>
+          <div className="text-3xl font-bold text-white mt-1">₪{DAILY_REVENUE.today.toLocaleString()}</div>
+          <div className="text-xs text-indigo-200 mt-2">מתוך יעד ₪{DAILY_REVENUE.target.toLocaleString()}</div>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-3 gap-6">
+        {/* Payment Methods Breakdown */}
+        <Card hover={false}>
+          <div className="p-5 border-b border-slate-100">
+            <h2 className="font-bold text-slate-800 text-lg tracking-tight">אמצעי תשלום</h2>
+            <p className="text-sm text-slate-400 mt-0.5">התפלגות החודש</p>
+          </div>
+          <div className="p-5 space-y-4">
+            {BILLING_DATA.paymentMethods.map((pm, idx) => (
+              <div key={idx} className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">{pm.icon}</span>
+                    <span className="text-sm font-semibold text-slate-700">{pm.method}</span>
+                  </div>
+                  <span className="text-sm font-bold text-slate-800">₪{pm.amount.toLocaleString()}</span>
+                </div>
+                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${idx === 0 ? 'bg-gradient-to-r from-indigo-500 to-violet-500' : idx === 1 ? 'bg-gradient-to-r from-emerald-500 to-teal-500' : 'bg-gradient-to-r from-amber-500 to-orange-500'}`}
+                    style={{ width: `${pm.percent}%` }}
+                  ></div>
+                </div>
+                <div className="text-xs text-slate-400 text-left">{pm.percent}%</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* Recent Payments */}
+        <Card hover={false}>
+          <div className="p-5 border-b border-slate-100">
+            <div className="flex items-center justify-between">
+              <h2 className="font-bold text-slate-800 text-lg tracking-tight">תשלומים אחרונים</h2>
+              <span className="flex h-2 w-2 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+            </div>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {BILLING_DATA.recentPayments.map(payment => (
+              <div key={payment.id} className="p-4 hover:bg-slate-50 transition-colors">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold text-slate-800">{payment.patient}</div>
+                    <div className="text-xs text-slate-400 mt-0.5">{payment.treatment}</div>
+                  </div>
+                  <div className="text-left">
+                    <div className="font-bold text-emerald-600">+₪{payment.amount.toLocaleString()}</div>
+                    <div className="text-xs text-slate-400 mt-0.5">{payment.time} • {payment.method}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* Pending Payments - Debt Collection */}
+        <Card hover={false}>
+          <div className="p-5 border-b border-slate-100">
+            <div className="flex items-center justify-between">
+              <h2 className="font-bold text-slate-800 text-lg tracking-tight">חובות לגבייה</h2>
+              <span className="px-2 py-0.5 bg-rose-100 text-rose-700 text-xs font-bold rounded-full">{BILLING_DATA.pendingPayments.length} פתוחים</span>
+            </div>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {BILLING_DATA.pendingPayments.map(debt => (
+              <div key={debt.id} className="p-4 hover:bg-rose-50/50 transition-colors cursor-pointer" onClick={() => onSelectPatient && onSelectPatient(Object.keys(MOCK_PATIENTS).find(k => MOCK_PATIENTS[k].name === debt.patient.split(' ')[0] + ' ' + debt.patient.split(' ')[1]) || 'p4')}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold text-slate-800">{debt.patient}</div>
+                    <div className="text-xs text-slate-400 mt-0.5">{debt.treatment}</div>
+                  </div>
+                  <div className="text-left">
+                    <div className="font-bold text-rose-600">₪{debt.amount.toLocaleString()}</div>
+                    <div className={`text-xs mt-0.5 font-medium ${debt.daysOverdue > 30 ? 'text-rose-500' : debt.daysOverdue > 14 ? 'text-amber-500' : 'text-slate-400'}`}>
+                      {debt.daysOverdue} ימים
+                    </div>
+                  </div>
+                </div>
+                {/* Progress bar for urgency */}
+                <div className="mt-2 h-1 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${debt.daysOverdue > 30 ? 'bg-rose-500' : debt.daysOverdue > 14 ? 'bg-amber-500' : 'bg-slate-300'}`}
+                    style={{ width: `${Math.min(debt.daysOverdue * 2, 100)}%` }}
+                  ></div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="p-4 border-t border-slate-100">
+            <button className="w-full px-4 py-2.5 bg-gradient-to-br from-rose-500 to-pink-600 text-white text-sm font-bold rounded-xl hover:shadow-lg hover:shadow-rose-200 transition-all">
+              שלח תזכורות לכולם
+            </button>
+          </div>
+        </Card>
+      </div>
+
+      {/* Monthly Revenue Chart (Visual) */}
+      <Card hover={false}>
+        <div className="p-5 border-b border-slate-100">
+          <h2 className="font-bold text-slate-800 text-lg tracking-tight">סיכום הכנסות - 3 חודשים אחרונים</h2>
+        </div>
+        <div className="p-6">
+          <div className="grid grid-cols-3 gap-8">
+            {BILLING_DATA.monthlyRevenue.map((month, idx) => {
+              const percent = Math.round((month.revenue / month.target) * 100);
+              const isOverTarget = percent >= 100;
+              return (
+                <div key={idx} className="text-center">
+                  <div className="text-sm font-semibold text-slate-600 mb-3">{month.month}</div>
+                  <div className="relative w-32 h-32 mx-auto">
+                    {/* Background circle */}
+                    <svg className="w-full h-full transform -rotate-90">
+                      <circle
+                        cx="64"
+                        cy="64"
+                        r="56"
+                        fill="none"
+                        stroke="#f1f5f9"
+                        strokeWidth="12"
+                      />
+                      <circle
+                        cx="64"
+                        cy="64"
+                        r="56"
+                        fill="none"
+                        stroke={isOverTarget ? '#10b981' : '#6366f1'}
+                        strokeWidth="12"
+                        strokeLinecap="round"
+                        strokeDasharray={`${percent * 3.52} 352`}
+                        className="transition-all duration-1000"
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className={`text-2xl font-bold ${isOverTarget ? 'text-emerald-600' : 'text-indigo-600'}`}>{percent}%</span>
+                      <span className="text-xs text-slate-400">מהיעד</span>
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <div className="text-lg font-bold text-slate-800">₪{month.revenue.toLocaleString()}</div>
+                    <div className="text-xs text-slate-400">יעד: ₪{month.target.toLocaleString()}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+};
+
 // ==================== AI ASSISTANT ====================
 
 const AIAssistant = () => {
@@ -687,11 +1225,71 @@ const AIAssistant = () => {
   const [isThinking, setIsThinking] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [displayedResponse, setDisplayedResponse] = useState('');
+  const [hasShownWelcome, setHasShownWelcome] = useState(false);
+  const messagesEndRef = useRef(null);
   const [currentSuggestions, setCurrentSuggestions] = useState([
     'מה מצב היום?',
     'יש מטופלים בעייתיים?',
     'מי עוד לא שילם?'
   ]);
+
+  // Calculate urgent items for badge
+  const highPriorityCount = ALERTS.filter(a => a.priority === 'high').length;
+
+  // Auto-scroll to bottom
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, displayedResponse]);
+
+  // Proactive welcome message when opening
+  useEffect(() => {
+    if (isOpen && !hasShownWelcome && messages.length === 0) {
+      setHasShownWelcome(true);
+      setIsThinking(true);
+
+      setTimeout(() => {
+        setIsThinking(false);
+        const welcomeMessage = getProactiveInsight();
+        const assistantMessage = { type: 'assistant', content: welcomeMessage.response };
+        setMessages([assistantMessage]);
+        setCurrentSuggestions(welcomeMessage.suggestions);
+        typeResponse(welcomeMessage.response);
+      }, 600);
+    }
+  }, [isOpen, hasShownWelcome, messages.length]);
+
+  // Generate proactive insight based on current state
+  const getProactiveInsight = () => {
+    const noShows = TODAY_APPOINTMENTS.filter(apt => apt.status === 'no-show');
+    const highPriorityAlerts = ALERTS.filter(a => a.priority === 'high');
+    const patientsWithDebt = Object.values(MOCK_PATIENTS).filter(p => p.balance > 0);
+    const totalDebt = patientsWithDebt.reduce((sum, p) => sum + p.balance, 0);
+    const inTreatment = TODAY_APPOINTMENTS.filter(apt => apt.status === 'in-treatment');
+
+    let response = 'בוקר טוב, דנה. הנה סיכום מהיר:\n\n';
+
+    if (highPriorityAlerts.length > 0) {
+      response += `יש ${highPriorityAlerts.length} התראות דחופות הדורשות תשומת לב.\n`;
+    }
+
+    if (noShows.length > 0) {
+      response += `${MOCK_PATIENTS[noShows[0].patientId].name} לא הגיעה לתור.\n`;
+    }
+
+    if (patientsWithDebt.length > 0) {
+      response += `${patientsWithDebt.length} מטופלים עם חוב פתוח (${totalDebt.toLocaleString()} ש"ח).\n`;
+    }
+
+    if (inTreatment.length > 0) {
+      const patient = MOCK_PATIENTS[inTreatment[0].patientId];
+      response += `\nכרגע בטיפול: ${patient.name}`;
+    }
+
+    return {
+      response: response.trim(),
+      suggestions: ['מה הכי דחוף?', 'פרטים על ההתראות', 'מצב התורים']
+    };
+  };
 
   // AI Logic - Analyzes mock data and generates deterministic responses
   const generateResponse = (question) => {
@@ -701,6 +1299,7 @@ const AIAssistant = () => {
     const completedToday = TODAY_APPOINTMENTS.filter(apt => apt.status === 'completed').length;
     const inTreatment = TODAY_APPOINTMENTS.filter(apt => apt.status === 'in-treatment').length;
     const scheduled = TODAY_APPOINTMENTS.filter(apt => apt.status === 'scheduled').length;
+    const arrived = TODAY_APPOINTMENTS.filter(apt => apt.status === 'arrived').length;
     const noShows = TODAY_APPOINTMENTS.filter(apt => apt.status === 'no-show');
     const totalToday = TODAY_APPOINTMENTS.length;
 
@@ -712,22 +1311,18 @@ const AIAssistant = () => {
     const highPriorityAlerts = ALERTS.filter(a => a.priority === 'high');
     const medicalAlerts = ALERTS.filter(a => a.type === 'medical');
 
-    // Patients with notes (potential issues)
-    const patientsWithMedicalNotes = Object.values(MOCK_PATIENTS).filter(p =>
-      p.notes && (p.notes.includes('סוכרתי') || p.notes.includes('קומדין') || p.notes.includes('בהריון') || p.notes.includes('חרד'))
-    );
-
     // Pending automation tasks
     const pendingTasks = AUTOMATION_TASKS.filter(t => t.status === 'pending');
 
     // Generate response based on question type
-    if (q.includes('מצב היום') || q.includes('סיכום') || q.includes('מה קורה')) {
-      let response = `${totalToday} תורים מתוכננים להיום. `;
-      response += `${completedToday} הושלמו, `;
-      if (inTreatment > 0) response += `${inTreatment} בטיפול כרגע, `;
-      response += `${scheduled} ממתינים. `;
+    if (q.includes('מצב היום') || q.includes('סיכום') || q.includes('מה קורה') || q.includes('תורים')) {
+      let response = `סה"כ ${totalToday} תורים היום:\n`;
+      response += `- ${completedToday} הושלמו\n`;
+      if (inTreatment > 0) response += `- ${inTreatment} בטיפול כרגע\n`;
+      if (arrived > 0) response += `- ${arrived} ממתינים בקבלה\n`;
+      response += `- ${scheduled} מתוכננים\n`;
       if (noShows.length > 0) {
-        response += `אי-הגעה אחת - ${MOCK_PATIENTS[noShows[0].patientId].name}.`;
+        response += `\nאי-הגעה: ${MOCK_PATIENTS[noShows[0].patientId].name}`;
       }
       return {
         response,
@@ -735,24 +1330,24 @@ const AIAssistant = () => {
       };
     }
 
-    if (q.includes('בעייתי') || q.includes('מורכב') || q.includes('קשה')) {
+    if (q.includes('בעייתי') || q.includes('מורכב') || q.includes('קשה') || q.includes('מיוחד')) {
       const problematicPatients = [];
 
-      // Check today's appointments for problematic patients
       TODAY_APPOINTMENTS.forEach(apt => {
         const patient = MOCK_PATIENTS[apt.patientId];
         if (patient.notes && patient.notes.length > 0) {
           problematicPatients.push({
             name: patient.name,
-            reason: patient.notes.split(' - ')[0]
+            reason: patient.notes.split(' - ')[0],
+            time: apt.time
           });
         }
       });
 
       if (problematicPatients.length > 0) {
-        let response = `${problematicPatients.length} מטופלים עם הערות מיוחדות היום:\n`;
-        problematicPatients.slice(0, 3).forEach(p => {
-          response += `- ${p.name}: ${p.reason}\n`;
+        let response = `${problematicPatients.length} מטופלים עם הערות מיוחדות היום:\n\n`;
+        problematicPatients.forEach(p => {
+          response += `${p.time} - ${p.name}\n${p.reason}\n\n`;
         });
         return {
           response: response.trim(),
@@ -766,31 +1361,33 @@ const AIAssistant = () => {
       };
     }
 
-    if (q.includes('שילם') || q.includes('חוב') || q.includes('תשלום') || q.includes('כסף')) {
+    if (q.includes('שילם') || q.includes('חוב') || q.includes('תשלום') || q.includes('כסף') || q.includes('יתרה')) {
       if (patientsWithDebt.length > 0) {
-        let response = `${patientsWithDebt.length} מטופלים עם יתרת חוב, סה"כ ${totalDebt.toLocaleString()} ש"ח:\n`;
-        patientsWithDebt.forEach(p => {
-          response += `- ${p.name}: ${p.balance.toLocaleString()} ש"ח\n`;
+        let response = `${patientsWithDebt.length} מטופלים עם יתרת חוב:\n\n`;
+        patientsWithDebt.sort((a, b) => b.balance - a.balance).forEach(p => {
+          response += `${p.name}: ${p.balance.toLocaleString()} ש"ח\n`;
         });
+        response += `\nסה"כ: ${totalDebt.toLocaleString()} ש"ח`;
         return {
           response: response.trim(),
           suggestions: ['שלח תזכורת תשלום', 'מי הכי דחוף?', 'מה מצב היום?']
         };
       }
       return {
-        response: 'אין חובות פתוחים כרגע.',
+        response: 'אין חובות פתוחים כרגע. כל המטופלים שילמו.',
         suggestions: ['מה מצב היום?', 'יש מטופלים בעייתיים?', 'מה בתור האוטומציות?']
       };
     }
 
     if (q.includes('הגעה') || q.includes('סיכון') || q.includes('מחר') || q.includes('ביטול')) {
-      // Find scheduled appointments for "tomorrow"
-      const tomorrowPatients = ['יוסף מזרחי', 'אבי גולן']; // Mock data
-      const atRiskPatient = MOCK_PATIENTS['p4']; // Has debt and is scheduled
+      const atRiskPatient = MOCK_PATIENTS['p4'];
 
-      let response = 'זיהיתי סיכון לאי-הגעה מחר:\n';
-      response += `- ${atRiskPatient.name}: חוב של ${atRiskPatient.balance.toLocaleString()} ש"ח + היסטוריה של דחיות.\n`;
-      response += 'מומלץ להתקשר לאישור אישי.';
+      let response = 'ניתוח סיכוני אי-הגעה למחר:\n\n';
+      response += `סיכון גבוה:\n`;
+      response += `${atRiskPatient.name}\n`;
+      response += `- חוב פתוח: ${atRiskPatient.balance.toLocaleString()} ש"ח\n`;
+      response += `- היסטוריה של דחיות\n\n`;
+      response += `המלצה: התקשרי לאישור אישי.`;
 
       return {
         response,
@@ -798,30 +1395,39 @@ const AIAssistant = () => {
       };
     }
 
-    if (q.includes('חשוב') || q.includes('דחוף') || q.includes('מיידי') || q.includes('עכשיו') || q.includes('לטפל')) {
+    if (q.includes('חשוב') || q.includes('דחוף') || q.includes('מיידי') || q.includes('עכשיו') || q.includes('לטפל') || q.includes('עדיפות')) {
       let priorities = [];
 
-      // Check medical alerts first
       if (medicalAlerts.length > 0) {
         const alert = medicalAlerts[0];
         const patient = MOCK_PATIENTS[alert.patientId];
-        priorities.push(`בדיקת INR ל${patient.name} לפני עקירה ב-11:30`);
+        priorities.push({
+          priority: 'קריטי',
+          text: `בדיקת INR ל${patient.name} לפני עקירה ב-11:30`,
+          color: 'rose'
+        });
       }
 
-      // Check no-shows
       if (noShows.length > 0) {
-        priorities.push(`טיפול באי-הגעה של ${MOCK_PATIENTS[noShows[0].patientId].name}`);
+        priorities.push({
+          priority: 'גבוה',
+          text: `טיפול באי-הגעה של ${MOCK_PATIENTS[noShows[0].patientId].name}`,
+          color: 'amber'
+        });
       }
 
-      // Check large debts
       const largeDebts = patientsWithDebt.filter(p => p.balance > 1000);
       if (largeDebts.length > 0) {
-        priorities.push(`חוב של ${largeDebts[0].balance.toLocaleString()} ש"ח - ${largeDebts[0].name}`);
+        priorities.push({
+          priority: 'בינוני',
+          text: `גביית חוב ${largeDebts[0].balance.toLocaleString()} ש"ח מ${largeDebts[0].name}`,
+          color: 'sky'
+        });
       }
 
-      let response = 'עדיפויות לטיפול מיידי:\n';
+      let response = 'עדיפויות לטיפול מיידי:\n\n';
       priorities.forEach((p, i) => {
-        response += `${i + 1}. ${p}\n`;
+        response += `${i + 1}. [${p.priority}] ${p.text}\n`;
       });
 
       return {
@@ -830,10 +1436,10 @@ const AIAssistant = () => {
       };
     }
 
-    if (q.includes('אוטומציה') || q.includes('תזכורות') || q.includes('הודעות')) {
-      let response = `${pendingTasks.length} משימות אוטומטיות ממתינות:\n`;
-      pendingTasks.slice(0, 3).forEach(t => {
-        response += `- ${t.patient}: ${t.action}\n`;
+    if (q.includes('אוטומציה') || q.includes('תזכורות') || q.includes('הודעות') || q.includes('משימות')) {
+      let response = `${pendingTasks.length} משימות אוטומטיות ממתינות:\n\n`;
+      pendingTasks.forEach(t => {
+        response += `${t.patient}\n${t.action}\nמתוזמן: ${t.scheduledFor}\n\n`;
       });
 
       return {
@@ -842,14 +1448,12 @@ const AIAssistant = () => {
       };
     }
 
-    if (q.includes('התראה') || q.includes('alert')) {
-      let response = `${ALERTS.length} התראות פעילות:\n`;
+    if (q.includes('התראה') || q.includes('alert') || q.includes('פרטים על ההתראות')) {
+      let response = `${ALERTS.length} התראות פעילות:\n\n`;
       ALERTS.forEach(a => {
-        response += `- ${a.message}\n`;
+        const priority = a.priority === 'high' ? '[דחוף]' : '[רגיל]';
+        response += `${priority} ${a.message}\n`;
       });
-      if (highPriorityAlerts.length > 0) {
-        response += `\n${highPriorityAlerts.length} מתוכן בעדיפות גבוהה.`;
-      }
 
       return {
         response: response.trim(),
@@ -865,23 +1469,55 @@ const AIAssistant = () => {
         !TODAY_APPOINTMENTS.some(apt => apt.chairId === chair.id && apt.status === 'in-treatment')
       );
 
-      let response = '';
-      if (busyChairs.length > 0) {
-        const busyApt = TODAY_APPOINTMENTS.find(apt => apt.chairId === busyChairs[0].id && apt.status === 'in-treatment');
-        const patient = MOCK_PATIENTS[busyApt.patientId];
-        response = `כיסא 2 תפוס - ${patient.name} בטיפול.\n`;
-      }
-      response += `${freeChairs.length} כיסאות פנויים.`;
+      let response = 'מצב כיסאות:\n\n';
+      CHAIRS.forEach(chair => {
+        const apt = TODAY_APPOINTMENTS.find(a => a.chairId === chair.id && a.status === 'in-treatment');
+        const staff = STAFF[chair.assignedTo];
+        if (apt) {
+          const patient = MOCK_PATIENTS[apt.patientId];
+          response += `${chair.name} - תפוס\n${patient.name} (${apt.treatment})\n${staff.name}\n\n`;
+        } else {
+          response += `${chair.name} - פנוי\n${staff.name}\n\n`;
+        }
+      });
+
+      return {
+        response: response.trim(),
+        suggestions: ['מתי מתפנה כיסא 2?', 'מה התור הבא?', 'מצב היום']
+      };
+    }
+
+    if (q.includes('משה') || q.includes('ביטון')) {
+      const patient = MOCK_PATIENTS['p8'];
+      let response = `${patient.name}\n\n`;
+      response += `טלפון: ${patient.phone}\n`;
+      response += `גיל: ${calculateAge(patient.birthDate)}\n`;
+      response += `חוב: ${patient.balance.toLocaleString()} ש"ח\n\n`;
+      response += `הערות צוות:\n${patient.notes}\n\n`;
+      response += `טיפול הבא: ${patient.nextTreatment}`;
 
       return {
         response,
-        suggestions: ['מתי מתפנה כיסא 2?', 'מה התור הבא?', 'מצב היום']
+        suggestions: ['התקשר למשה', 'בדוק INR', 'חזרה לסיכום']
+      };
+    }
+
+    if (q.includes('שרה') || q.includes('אברהם')) {
+      const patient = MOCK_PATIENTS['p3'];
+      let response = `${patient.name}\n\n`;
+      response += `טלפון: ${patient.phone}\n`;
+      response += `סטטוס: לא הגיעה לתור 10:00\n\n`;
+      response += `פעולה מומלצת:\nשליחת SMS עם קישור לקביעת תור חדש`;
+
+      return {
+        response,
+        suggestions: ['שלח SMS לשרה', 'התקשר לשרה', 'חזרה לסיכום']
       };
     }
 
     // Default response
     return {
-      response: 'אני כאן לעזור בניהול המרפאה. אפשר לשאול על מצב היום, תשלומים, התראות, או כל נושא תפעולי אחר.',
+      response: 'אני כאן לעזור בניהול המרפאה. אפשר לשאול על:\n\n- מצב התורים היום\n- התראות ודחיפויות\n- מצב תשלומים וחובות\n- מטופלים בעייתיים\n- משימות אוטומטיות',
       suggestions: ['מה מצב היום?', 'יש חובות פתוחים?', 'מה הכי דחוף?']
     };
   };
@@ -901,155 +1537,148 @@ const AIAssistant = () => {
         setIsTyping(false);
         if (callback) callback();
       }
-    }, 15);
+    }, 12);
   };
 
   const handleSubmit = (question) => {
     if (!question.trim()) return;
 
-    // Add user message
     const userMessage = { type: 'user', content: question };
     setMessages(prev => [...prev, userMessage]);
     setInputValue('');
-
-    // Show thinking state
     setIsThinking(true);
 
-    // Simulate processing delay
     setTimeout(() => {
       setIsThinking(false);
-
       const { response, suggestions } = generateResponse(question);
-
-      // Add assistant message (will be animated)
       const assistantMessage = { type: 'assistant', content: response };
       setMessages(prev => [...prev, assistantMessage]);
       setCurrentSuggestions(suggestions);
-
-      // Start typing animation
       typeResponse(response);
-    }, 800 + Math.random() * 400);
+    }, 500 + Math.random() * 300);
   };
 
   const handleSuggestionClick = (suggestion) => {
     handleSubmit(suggestion);
   };
 
-  // Get the last assistant message for typing animation
-  const lastAssistantMessage = messages.filter(m => m.type === 'assistant').slice(-1)[0];
-
   return (
     <>
       {/* Floating Toggle Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`fixed bottom-6 left-6 z-50 w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-300 shadow-2xl ${
+        className={`fixed bottom-6 left-6 z-50 w-16 h-16 rounded-2xl flex items-center justify-center transition-all duration-500 ${
           isOpen
-            ? 'bg-slate-800 rotate-0 shadow-slate-400/20'
-            : 'bg-gradient-to-br from-indigo-500 to-violet-600 shadow-indigo-500/30 hover:shadow-indigo-500/50 hover:scale-105'
+            ? 'bg-slate-800 shadow-2xl shadow-slate-400/30 scale-90'
+            : 'bg-gradient-to-br from-indigo-500 via-violet-500 to-purple-600 shadow-2xl shadow-violet-500/40 hover:shadow-violet-500/60 hover:scale-110'
         }`}
       >
+        {/* Notification Badge */}
+        {!isOpen && highPriorityCount > 0 && (
+          <span className="absolute -top-1 -right-1 w-6 h-6 bg-rose-500 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg animate-pulse">
+            {highPriorityCount}
+          </span>
+        )}
+
+        {/* Pulse ring animation when closed */}
+        {!isOpen && (
+          <span className="absolute inset-0 rounded-2xl bg-violet-400 animate-ping opacity-20"></span>
+        )}
+
         {isOpen ? (
-          <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
         ) : (
-          <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-8 h-8 text-white relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
           </svg>
         )}
       </button>
 
       {/* Assistant Panel */}
-      <div className={`fixed bottom-24 left-6 z-40 w-96 transition-all duration-500 ease-out ${
+      <div className={`fixed bottom-28 left-6 z-40 w-[420px] transition-all duration-500 ease-out ${
         isOpen
-          ? 'opacity-100 translate-y-0 pointer-events-auto'
-          : 'opacity-0 translate-y-4 pointer-events-none'
+          ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto'
+          : 'opacity-0 translate-y-8 scale-95 pointer-events-none'
       }`}>
-        <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl shadow-slate-300/50 border border-white/60 overflow-hidden">
+        <div className="bg-white/90 backdrop-blur-2xl rounded-3xl shadow-2xl shadow-slate-400/30 border border-white/80 overflow-hidden">
           {/* Header */}
-          <div className="px-6 py-5 bg-gradient-to-br from-slate-800 to-slate-900">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="px-6 py-5 bg-gradient-to-br from-slate-800 via-slate-850 to-slate-900 relative overflow-hidden">
+            {/* Decorative elements */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-indigo-500/20 to-transparent rounded-full blur-2xl"></div>
+            <div className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-tr from-violet-500/20 to-transparent rounded-full blur-2xl"></div>
+
+            <div className="flex items-center gap-4 relative z-10">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 via-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/30">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
                 </svg>
               </div>
               <div>
-                <h3 className="text-white font-bold tracking-tight">עוזר אישי</h3>
-                <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                  מחובר למערכת
+                <h3 className="text-white font-bold text-lg tracking-tight">עוזר אישי</h3>
+                <div className="flex items-center gap-2 text-sm text-slate-300">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span className="text-emerald-400 font-medium">מחובר</span>
+                  </span>
+                  <span className="text-slate-500">|</span>
+                  <span>מנתח {TODAY_APPOINTMENTS.length} תורים</span>
                 </div>
               </div>
             </div>
           </div>
 
           {/* Messages Area */}
-          <div className="h-80 overflow-y-auto p-5 space-y-4 bg-gradient-to-b from-slate-50/50 to-white/50">
-            {messages.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-center px-4">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-100 to-violet-100 flex items-center justify-center mb-4">
-                  <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
-                  </svg>
+          <div className="h-96 overflow-y-auto p-5 space-y-4 bg-gradient-to-b from-slate-50/80 to-white/80">
+            {messages.map((msg, idx) => (
+              <div key={idx} className={`flex ${msg.type === 'user' ? 'justify-start' : 'justify-end'} animate-fadeIn`}>
+                <div className={`max-w-[90%] ${
+                  msg.type === 'user'
+                    ? 'bg-gradient-to-br from-indigo-500 via-violet-500 to-purple-600 text-white rounded-2xl rounded-tr-md px-5 py-3 shadow-lg shadow-violet-200'
+                    : 'bg-white border border-slate-200 text-slate-700 rounded-2xl rounded-tl-md px-5 py-4 shadow-md'
+                }`}>
+                  <p className="text-sm leading-relaxed font-medium whitespace-pre-line">
+                    {msg.type === 'assistant' && idx === messages.length - 1 && isTyping
+                      ? displayedResponse
+                      : msg.content
+                    }
+                    {msg.type === 'assistant' && idx === messages.length - 1 && isTyping && (
+                      <span className="inline-block w-0.5 h-4 bg-violet-500 mr-1 animate-pulse"></span>
+                    )}
+                  </p>
                 </div>
-                <p className="text-slate-600 font-medium text-sm leading-relaxed">
-                  אני כאן לעזור בניהול המרפאה.
-                  <br />
-                  שאלי אותי על מצב היום, תשלומים, או התראות.
-                </p>
               </div>
-            ) : (
-              <>
-                {messages.map((msg, idx) => (
-                  <div key={idx} className={`flex ${msg.type === 'user' ? 'justify-start' : 'justify-end'}`}>
-                    <div className={`max-w-[85%] ${
-                      msg.type === 'user'
-                        ? 'bg-gradient-to-br from-indigo-500 to-violet-600 text-white rounded-2xl rounded-tr-md px-4 py-3'
-                        : 'bg-white border border-slate-200/80 text-slate-700 rounded-2xl rounded-tl-md px-4 py-3 shadow-sm'
-                    }`}>
-                      <p className="text-sm leading-relaxed font-medium whitespace-pre-line">
-                        {msg.type === 'assistant' && idx === messages.length - 1 && isTyping
-                          ? displayedResponse
-                          : msg.content
-                        }
-                        {msg.type === 'assistant' && idx === messages.length - 1 && isTyping && (
-                          <span className="inline-block w-0.5 h-4 bg-slate-400 mr-0.5 animate-pulse"></span>
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+            ))}
 
-                {/* Thinking indicator */}
-                {isThinking && (
-                  <div className="flex justify-end">
-                    <div className="bg-white border border-slate-200/80 rounded-2xl rounded-tl-md px-4 py-3 shadow-sm">
-                      <div className="flex items-center gap-2">
-                        <div className="flex gap-1">
-                          <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                          <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                          <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
-                        </div>
-                        <span className="text-xs text-slate-400 font-medium">מנתח נתונים</span>
-                      </div>
+            {/* Thinking indicator */}
+            {isThinking && (
+              <div className="flex justify-end animate-fadeIn">
+                <div className="bg-white border border-slate-200 rounded-2xl rounded-tl-md px-5 py-4 shadow-md">
+                  <div className="flex items-center gap-3">
+                    <div className="flex gap-1.5">
+                      <span className="w-2.5 h-2.5 bg-violet-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                      <span className="w-2.5 h-2.5 bg-violet-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                      <span className="w-2.5 h-2.5 bg-violet-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
                     </div>
+                    <span className="text-sm text-slate-500 font-medium">מנתח נתונים...</span>
                   </div>
-                )}
-              </>
+                </div>
+              </div>
             )}
+
+            <div ref={messagesEndRef} />
           </div>
 
           {/* Suggestions */}
           {!isThinking && !isTyping && (
-            <div className="px-4 pb-3 pt-2 border-t border-slate-100/80 bg-white/60">
+            <div className="px-5 pb-4 pt-3 border-t border-slate-100 bg-white/90">
               <div className="flex flex-wrap gap-2">
                 {currentSuggestions.map((suggestion, idx) => (
                   <button
                     key={idx}
                     onClick={() => handleSuggestionClick(suggestion)}
-                    className="px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                    className="px-4 py-2 text-xs font-semibold text-violet-700 bg-violet-50 hover:bg-violet-100 rounded-xl transition-all duration-200 hover:scale-105 border border-violet-100"
                   >
                     {suggestion}
                   </button>
@@ -1059,7 +1688,7 @@ const AIAssistant = () => {
           )}
 
           {/* Input Area */}
-          <div className="p-4 border-t border-slate-100/80 bg-white/80">
+          <div className="p-5 border-t border-slate-100 bg-white">
             <div className="flex gap-3">
               <input
                 type="text"
@@ -1067,13 +1696,13 @@ const AIAssistant = () => {
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSubmit(inputValue)}
                 placeholder="שאל שאלה..."
-                className="flex-1 px-4 py-3 bg-slate-100/80 rounded-xl text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:bg-white transition-all font-medium"
+                className="flex-1 px-5 py-3.5 bg-slate-100 rounded-2xl text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-300 focus:bg-white transition-all font-medium"
                 disabled={isThinking || isTyping}
               />
               <button
                 onClick={() => handleSubmit(inputValue)}
                 disabled={!inputValue.trim() || isThinking || isTyping}
-                className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white flex items-center justify-center shadow-lg shadow-indigo-200 hover:shadow-xl hover:shadow-indigo-300 disabled:opacity-50 disabled:shadow-none transition-all"
+                className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 via-violet-500 to-purple-600 text-white flex items-center justify-center shadow-lg shadow-violet-300 hover:shadow-xl hover:shadow-violet-400 disabled:opacity-50 disabled:shadow-none transition-all duration-300 hover:scale-105"
               >
                 <svg className="w-5 h-5 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
@@ -1083,6 +1712,17 @@ const AIAssistant = () => {
           </div>
         </div>
       </div>
+
+      {/* Custom animation styles */}
+      <style>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fadeIn {
+          animation: fadeIn 0.3s ease-out;
+        }
+      `}</style>
     </>
   );
 };
@@ -1113,6 +1753,8 @@ export default function DentalClinicDemo() {
         return <PatientCardScreen patientId={selectedPatientId} onBack={handleBackFromPatient} />;
       case 'automation':
         return <AutomationScreen />;
+      case 'billing':
+        return <BillingScreen onSelectPatient={handleSelectPatient} />;
       default:
         return <DashboardScreen onNavigate={setCurrentScreen} onSelectPatient={handleSelectPatient} />;
     }
@@ -1146,6 +1788,12 @@ export default function DentalClinicDemo() {
             label="יומן תורים"
             active={currentScreen === 'appointments'}
             onClick={() => setCurrentScreen('appointments')}
+          />
+          <NavItem
+            icon="&#x1F4B3;"
+            label="גבייה וכספים"
+            active={currentScreen === 'billing'}
+            onClick={() => setCurrentScreen('billing')}
           />
           <NavItem
             icon="&#x2699;&#xFE0F;"
