@@ -678,110 +678,412 @@ const AutomationScreen = () => {
   );
 };
 
-// ==================== MAIN APP ====================
+// ==================== AI ASSISTANT ====================
 
-export default function DentalClinicDemo() {
-  const [currentScreen, setCurrentScreen] = useState('dashboard');
-  const [selectedPatientId, setSelectedPatientId] = useState(null);
+const AIAssistant = () => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [messages, setMessages] = useState([]);
+  const [inputValue, setInputValue] = useState('');
+  const [isThinking, setIsThinking] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const [displayedResponse, setDisplayedResponse] = useState('');
+  const [currentSuggestions, setCurrentSuggestions] = useState([
+    'מה מצב היום?',
+    'יש מטופלים בעייתיים?',
+    'מי עוד לא שילם?'
+  ]);
 
-  const handleSelectPatient = (patientId) => {
-    setSelectedPatientId(patientId);
-    setCurrentScreen('patient');
-  };
+  // AI Logic - Analyzes mock data and generates deterministic responses
+  const generateResponse = (question) => {
+    const q = question.toLowerCase();
 
-  const handleBackFromPatient = () => {
-    setSelectedPatientId(null);
-    setCurrentScreen('dashboard');
-  };
+    // Analyze current data
+    const completedToday = TODAY_APPOINTMENTS.filter(apt => apt.status === 'completed').length;
+    const inTreatment = TODAY_APPOINTMENTS.filter(apt => apt.status === 'in-treatment').length;
+    const scheduled = TODAY_APPOINTMENTS.filter(apt => apt.status === 'scheduled').length;
+    const noShows = TODAY_APPOINTMENTS.filter(apt => apt.status === 'no-show');
+    const totalToday = TODAY_APPOINTMENTS.length;
 
-  const renderScreen = () => {
-    switch (currentScreen) {
-      case 'dashboard':
-        return <DashboardScreen onNavigate={setCurrentScreen} onSelectPatient={handleSelectPatient} />;
-      case 'appointments':
-        return <AppointmentsScreen onSelectPatient={handleSelectPatient} />;
-      case 'patient':
-        return <PatientCardScreen patientId={selectedPatientId} onBack={handleBackFromPatient} />;
-      case 'automation':
-        return <AutomationScreen />;
-      default:
-        return <DashboardScreen onNavigate={setCurrentScreen} onSelectPatient={handleSelectPatient} />;
+    // Patients with debt
+    const patientsWithDebt = Object.values(MOCK_PATIENTS).filter(p => p.balance > 0);
+    const totalDebt = patientsWithDebt.reduce((sum, p) => sum + p.balance, 0);
+
+    // High priority alerts
+    const highPriorityAlerts = ALERTS.filter(a => a.priority === 'high');
+    const medicalAlerts = ALERTS.filter(a => a.type === 'medical');
+
+    // Patients with notes (potential issues)
+    const patientsWithMedicalNotes = Object.values(MOCK_PATIENTS).filter(p =>
+      p.notes && (p.notes.includes('סוכרתי') || p.notes.includes('קומדין') || p.notes.includes('בהריון') || p.notes.includes('חרד'))
+    );
+
+    // Pending automation tasks
+    const pendingTasks = AUTOMATION_TASKS.filter(t => t.status === 'pending');
+
+    // Generate response based on question type
+    if (q.includes('מצב היום') || q.includes('סיכום') || q.includes('מה קורה')) {
+      let response = `${totalToday} תורים מתוכננים להיום. `;
+      response += `${completedToday} הושלמו, `;
+      if (inTreatment > 0) response += `${inTreatment} בטיפול כרגע, `;
+      response += `${scheduled} ממתינים. `;
+      if (noShows.length > 0) {
+        response += `אי-הגעה אחת - ${MOCK_PATIENTS[noShows[0].patientId].name}.`;
+      }
+      return {
+        response,
+        suggestions: ['יש התראות דחופות?', 'מי עוד לא שילם?', 'מה דורש טיפול מיידי?']
+      };
     }
+
+    if (q.includes('בעייתי') || q.includes('מורכב') || q.includes('קשה')) {
+      const problematicPatients = [];
+
+      // Check today's appointments for problematic patients
+      TODAY_APPOINTMENTS.forEach(apt => {
+        const patient = MOCK_PATIENTS[apt.patientId];
+        if (patient.notes && patient.notes.length > 0) {
+          problematicPatients.push({
+            name: patient.name,
+            reason: patient.notes.split(' - ')[0]
+          });
+        }
+      });
+
+      if (problematicPatients.length > 0) {
+        let response = `${problematicPatients.length} מטופלים עם הערות מיוחדות היום:\n`;
+        problematicPatients.slice(0, 3).forEach(p => {
+          response += `- ${p.name}: ${p.reason}\n`;
+        });
+        return {
+          response: response.trim(),
+          suggestions: ['פרטים על משה ביטון', 'יש התראות רפואיות?', 'מה מצב התשלומים?']
+        };
+      }
+
+      return {
+        response: 'אין מטופלים עם דגשים מיוחדים מתוכננים להיום.',
+        suggestions: ['מה מצב היום?', 'יש חובות פתוחים?', 'מה בתור האוטומציות?']
+      };
+    }
+
+    if (q.includes('שילם') || q.includes('חוב') || q.includes('תשלום') || q.includes('כסף')) {
+      if (patientsWithDebt.length > 0) {
+        let response = `${patientsWithDebt.length} מטופלים עם יתרת חוב, סה"כ ${totalDebt.toLocaleString()} ש"ח:\n`;
+        patientsWithDebt.forEach(p => {
+          response += `- ${p.name}: ${p.balance.toLocaleString()} ש"ח\n`;
+        });
+        return {
+          response: response.trim(),
+          suggestions: ['שלח תזכורת תשלום', 'מי הכי דחוף?', 'מה מצב היום?']
+        };
+      }
+      return {
+        response: 'אין חובות פתוחים כרגע.',
+        suggestions: ['מה מצב היום?', 'יש מטופלים בעייתיים?', 'מה בתור האוטומציות?']
+      };
+    }
+
+    if (q.includes('הגעה') || q.includes('סיכון') || q.includes('מחר') || q.includes('ביטול')) {
+      // Find scheduled appointments for "tomorrow"
+      const tomorrowPatients = ['יוסף מזרחי', 'אבי גולן']; // Mock data
+      const atRiskPatient = MOCK_PATIENTS['p4']; // Has debt and is scheduled
+
+      let response = 'זיהיתי סיכון לאי-הגעה מחר:\n';
+      response += `- ${atRiskPatient.name}: חוב של ${atRiskPatient.balance.toLocaleString()} ש"ח + היסטוריה של דחיות.\n`;
+      response += 'מומלץ להתקשר לאישור אישי.';
+
+      return {
+        response,
+        suggestions: ['שלח תזכורת ליוסף', 'מה עוד מתוכנן למחר?', 'מצב אוטומציות']
+      };
+    }
+
+    if (q.includes('חשוב') || q.includes('דחוף') || q.includes('מיידי') || q.includes('עכשיו') || q.includes('לטפל')) {
+      let priorities = [];
+
+      // Check medical alerts first
+      if (medicalAlerts.length > 0) {
+        const alert = medicalAlerts[0];
+        const patient = MOCK_PATIENTS[alert.patientId];
+        priorities.push(`בדיקת INR ל${patient.name} לפני עקירה ב-11:30`);
+      }
+
+      // Check no-shows
+      if (noShows.length > 0) {
+        priorities.push(`טיפול באי-הגעה של ${MOCK_PATIENTS[noShows[0].patientId].name}`);
+      }
+
+      // Check large debts
+      const largeDebts = patientsWithDebt.filter(p => p.balance > 1000);
+      if (largeDebts.length > 0) {
+        priorities.push(`חוב של ${largeDebts[0].balance.toLocaleString()} ש"ח - ${largeDebts[0].name}`);
+      }
+
+      let response = 'עדיפויות לטיפול מיידי:\n';
+      priorities.forEach((p, i) => {
+        response += `${i + 1}. ${p}\n`;
+      });
+
+      return {
+        response: response.trim(),
+        suggestions: ['פרטים על משה ביטון', 'התקשר לשרה אברהם', 'מצב כיסאות']
+      };
+    }
+
+    if (q.includes('אוטומציה') || q.includes('תזכורות') || q.includes('הודעות')) {
+      let response = `${pendingTasks.length} משימות אוטומטיות ממתינות:\n`;
+      pendingTasks.slice(0, 3).forEach(t => {
+        response += `- ${t.patient}: ${t.action}\n`;
+      });
+
+      return {
+        response: response.trim(),
+        suggestions: ['הפעל את כולן', 'מה מצב היום?', 'יש התראות?']
+      };
+    }
+
+    if (q.includes('התראה') || q.includes('alert')) {
+      let response = `${ALERTS.length} התראות פעילות:\n`;
+      ALERTS.forEach(a => {
+        response += `- ${a.message}\n`;
+      });
+      if (highPriorityAlerts.length > 0) {
+        response += `\n${highPriorityAlerts.length} מתוכן בעדיפות גבוהה.`;
+      }
+
+      return {
+        response: response.trim(),
+        suggestions: ['טפל בהתראה הראשונה', 'מה הכי דחוף?', 'מצב תשלומים']
+      };
+    }
+
+    if (q.includes('כיסא') || q.includes('פנוי') || q.includes('תפוס')) {
+      const busyChairs = CHAIRS.filter(chair =>
+        TODAY_APPOINTMENTS.some(apt => apt.chairId === chair.id && apt.status === 'in-treatment')
+      );
+      const freeChairs = CHAIRS.filter(chair =>
+        !TODAY_APPOINTMENTS.some(apt => apt.chairId === chair.id && apt.status === 'in-treatment')
+      );
+
+      let response = '';
+      if (busyChairs.length > 0) {
+        const busyApt = TODAY_APPOINTMENTS.find(apt => apt.chairId === busyChairs[0].id && apt.status === 'in-treatment');
+        const patient = MOCK_PATIENTS[busyApt.patientId];
+        response = `כיסא 2 תפוס - ${patient.name} בטיפול.\n`;
+      }
+      response += `${freeChairs.length} כיסאות פנויים.`;
+
+      return {
+        response,
+        suggestions: ['מתי מתפנה כיסא 2?', 'מה התור הבא?', 'מצב היום']
+      };
+    }
+
+    // Default response
+    return {
+      response: 'אני כאן לעזור בניהול המרפאה. אפשר לשאול על מצב היום, תשלומים, התראות, או כל נושא תפעולי אחר.',
+      suggestions: ['מה מצב היום?', 'יש חובות פתוחים?', 'מה הכי דחוף?']
+    };
   };
+
+  // Typing animation effect
+  const typeResponse = (fullResponse, callback) => {
+    setIsTyping(true);
+    setDisplayedResponse('');
+
+    let index = 0;
+    const interval = setInterval(() => {
+      if (index < fullResponse.length) {
+        setDisplayedResponse(fullResponse.slice(0, index + 1));
+        index++;
+      } else {
+        clearInterval(interval);
+        setIsTyping(false);
+        if (callback) callback();
+      }
+    }, 15);
+  };
+
+  const handleSubmit = (question) => {
+    if (!question.trim()) return;
+
+    // Add user message
+    const userMessage = { type: 'user', content: question };
+    setMessages(prev => [...prev, userMessage]);
+    setInputValue('');
+
+    // Show thinking state
+    setIsThinking(true);
+
+    // Simulate processing delay
+    setTimeout(() => {
+      setIsThinking(false);
+
+      const { response, suggestions } = generateResponse(question);
+
+      // Add assistant message (will be animated)
+      const assistantMessage = { type: 'assistant', content: response };
+      setMessages(prev => [...prev, assistantMessage]);
+      setCurrentSuggestions(suggestions);
+
+      // Start typing animation
+      typeResponse(response);
+    }, 800 + Math.random() * 400);
+  };
+
+  const handleSuggestionClick = (suggestion) => {
+    handleSubmit(suggestion);
+  };
+
+  // Get the last assistant message for typing animation
+  const lastAssistantMessage = messages.filter(m => m.type === 'assistant').slice(-1)[0];
 
   return (
-    <div dir="rtl" className="min-h-screen bg-gradient-to-br from-slate-100 via-slate-50 to-white flex font-sans">
-      {/* Sidebar */}
-      <aside className="w-72 bg-gradient-to-b from-slate-800 via-slate-900 to-slate-950 p-6 flex flex-col shadow-2xl">
-        <div className="mb-10">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/30">
-              <Icons.tooth className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <div className="font-bold text-white text-lg tracking-tight">דנטל קליניק</div>
-              <div className="text-xs text-slate-400 font-medium">מערכת ניהול מרפאה</div>
-            </div>
-          </div>
-        </div>
+    <>
+      {/* Floating Toggle Button */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className={`fixed bottom-6 left-6 z-50 w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-300 shadow-2xl ${
+          isOpen
+            ? 'bg-slate-800 rotate-0 shadow-slate-400/20'
+            : 'bg-gradient-to-br from-indigo-500 to-violet-600 shadow-indigo-500/30 hover:shadow-indigo-500/50 hover:scale-105'
+        }`}
+      >
+        {isOpen ? (
+          <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        ) : (
+          <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+          </svg>
+        )}
+      </button>
 
-        <nav className="space-y-2 flex-1">
-          <NavItem 
-            Icon={Icons.dashboard} 
-            label="לוח בקרה" 
-            active={currentScreen === 'dashboard'} 
-            onClick={() => setCurrentScreen('dashboard')} 
-          />
-          <NavItem 
-            Icon={Icons.calendar} 
-            label="יומן תורים" 
-            active={currentScreen === 'appointments'} 
-            onClick={() => setCurrentScreen('appointments')} 
-          />
-          <NavItem 
-            Icon={Icons.automation} 
-            label="אוטומציה" 
-            active={currentScreen === 'automation'} 
-            onClick={() => setCurrentScreen('automation')} 
-          />
-        </nav>
-
-        <div className="pt-6 border-t border-slate-700/50">
-          <div className="flex items-center gap-3 px-3 py-3 rounded-xl bg-slate-800/50">
-            <div className="w-10 h-10 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
-              <Icons.user className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <div className="text-sm font-semibold text-white">דנה כהן</div>
-              <div className="text-xs text-emerald-400 font-medium flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                מחוברת
+      {/* Assistant Panel */}
+      <div className={`fixed bottom-24 left-6 z-40 w-96 transition-all duration-500 ease-out ${
+        isOpen
+          ? 'opacity-100 translate-y-0 pointer-events-auto'
+          : 'opacity-0 translate-y-4 pointer-events-none'
+      }`}>
+        <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl shadow-slate-300/50 border border-white/60 overflow-hidden">
+          {/* Header */}
+          <div className="px-6 py-5 bg-gradient-to-br from-slate-800 to-slate-900">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-white font-bold tracking-tight">עוזר אישי</h3>
+                <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                  מחובר למערכת
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 p-10 overflow-auto">
-        <div className="max-w-6xl mx-auto">
-          {renderScreen()}
-        </div>
-      </main>
-
-      {/* AI Assistant */}
-      <AIAssistant />
-    </div>
-  );
-}rounded-lg text-xs font-bold border ${config.bg} ${config.text} ${config.border}`}>
-                  {config.label}
-                </span>
+          {/* Messages Area */}
+          <div className="h-80 overflow-y-auto p-5 space-y-4 bg-gradient-to-b from-slate-50/50 to-white/50">
+            {messages.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-center px-4">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-100 to-violet-100 flex items-center justify-center mb-4">
+                  <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+                  </svg>
+                </div>
+                <p className="text-slate-600 font-medium text-sm leading-relaxed">
+                  אני כאן לעזור בניהול המרפאה.
+                  <br />
+                  שאלי אותי על מצב היום, תשלומים, או התראות.
+                </p>
               </div>
-            );
-          })}
+            ) : (
+              <>
+                {messages.map((msg, idx) => (
+                  <div key={idx} className={`flex ${msg.type === 'user' ? 'justify-start' : 'justify-end'}`}>
+                    <div className={`max-w-[85%] ${
+                      msg.type === 'user'
+                        ? 'bg-gradient-to-br from-indigo-500 to-violet-600 text-white rounded-2xl rounded-tr-md px-4 py-3'
+                        : 'bg-white border border-slate-200/80 text-slate-700 rounded-2xl rounded-tl-md px-4 py-3 shadow-sm'
+                    }`}>
+                      <p className="text-sm leading-relaxed font-medium whitespace-pre-line">
+                        {msg.type === 'assistant' && idx === messages.length - 1 && isTyping
+                          ? displayedResponse
+                          : msg.content
+                        }
+                        {msg.type === 'assistant' && idx === messages.length - 1 && isTyping && (
+                          <span className="inline-block w-0.5 h-4 bg-slate-400 mr-0.5 animate-pulse"></span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Thinking indicator */}
+                {isThinking && (
+                  <div className="flex justify-end">
+                    <div className="bg-white border border-slate-200/80 rounded-2xl rounded-tl-md px-4 py-3 shadow-sm">
+                      <div className="flex items-center gap-2">
+                        <div className="flex gap-1">
+                          <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                          <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                          <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                        </div>
+                        <span className="text-xs text-slate-400 font-medium">מנתח נתונים</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Suggestions */}
+          {!isThinking && !isTyping && (
+            <div className="px-4 pb-3 pt-2 border-t border-slate-100/80 bg-white/60">
+              <div className="flex flex-wrap gap-2">
+                {currentSuggestions.map((suggestion, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => handleSuggestionClick(suggestion)}
+                    className="px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Input Area */}
+          <div className="p-4 border-t border-slate-100/80 bg-white/80">
+            <div className="flex gap-3">
+              <input
+                type="text"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSubmit(inputValue)}
+                placeholder="שאל שאלה..."
+                className="flex-1 px-4 py-3 bg-slate-100/80 rounded-xl text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:bg-white transition-all font-medium"
+                disabled={isThinking || isTyping}
+              />
+              <button
+                onClick={() => handleSubmit(inputValue)}
+                disabled={!inputValue.trim() || isThinking || isTyping}
+                className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white flex items-center justify-center shadow-lg shadow-indigo-200 hover:shadow-xl hover:shadow-indigo-300 disabled:opacity-50 disabled:shadow-none transition-all"
+              >
+                <svg className="w-5 h-5 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+              </button>
+            </div>
+          </div>
         </div>
-      </Card>
-    </div>
+      </div>
+    </>
   );
 };
 
@@ -823,7 +1125,7 @@ export default function DentalClinicDemo() {
         <div className="mb-10">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/30">
-              <span className="text-white text-xl">🦷</span>
+              <span className="text-white text-xl">&#x1F9B7;</span>
             </div>
             <div>
               <div className="font-bold text-white text-lg tracking-tight">דנטל קליניק</div>
@@ -833,30 +1135,30 @@ export default function DentalClinicDemo() {
         </div>
 
         <nav className="space-y-2 flex-1">
-          <NavItem 
-            icon="📊" 
-            label="לוח בקרה" 
-            active={currentScreen === 'dashboard'} 
-            onClick={() => setCurrentScreen('dashboard')} 
+          <NavItem
+            icon="&#x1F4CA;"
+            label="לוח בקרה"
+            active={currentScreen === 'dashboard'}
+            onClick={() => setCurrentScreen('dashboard')}
           />
-          <NavItem 
-            icon="📅" 
-            label="יומן תורים" 
-            active={currentScreen === 'appointments'} 
-            onClick={() => setCurrentScreen('appointments')} 
+          <NavItem
+            icon="&#x1F4C5;"
+            label="יומן תורים"
+            active={currentScreen === 'appointments'}
+            onClick={() => setCurrentScreen('appointments')}
           />
-          <NavItem 
-            icon="⚙️" 
-            label="אוטומציה" 
-            active={currentScreen === 'automation'} 
-            onClick={() => setCurrentScreen('automation')} 
+          <NavItem
+            icon="&#x2699;&#xFE0F;"
+            label="אוטומציה"
+            active={currentScreen === 'automation'}
+            onClick={() => setCurrentScreen('automation')}
           />
         </nav>
 
         <div className="pt-6 border-t border-slate-700/50">
           <div className="flex items-center gap-3 px-3 py-3 rounded-xl bg-slate-800/50">
             <div className="w-10 h-10 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
-              <span className="text-white font-bold">ד</span>
+              <span className="text-white font-bold">&#x05D3;</span>
             </div>
             <div>
               <div className="text-sm font-semibold text-white">דנה כהן</div>
@@ -875,6 +1177,9 @@ export default function DentalClinicDemo() {
           {renderScreen()}
         </div>
       </main>
+
+      {/* AI Assistant */}
+      <AIAssistant />
     </div>
   );
 }
